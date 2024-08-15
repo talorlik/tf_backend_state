@@ -1,5 +1,10 @@
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "${var.prefix}-s3-tfstate"
+  force_destroy = true
+
+  lifecycle {
+    prevent_destroy = false
+  }
 
   tags = {
     Name      = "${var.prefix}-s3-tfstate"
@@ -37,31 +42,60 @@ resource "aws_s3_bucket_policy" "terraform_state_policy" {
 	"Version": "2012-10-17",
 	"Statement": [
 		{
-			"Sid": "ListBucketContents",
-			"Effect": "Allow",
-			"Action": "s3:ListBucket",
-			"Resource": "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}",
-			"Principal": {
-				"AWS": "${var.principal_arn}"
-			}
-		},
-		{
-			"Sid": "GetPutDeleteObjects",
+			"Sid": "ListGetPutDeleteBucketContents",
 			"Effect": "Allow",
 			"Action": [
-				"s3:GetObject",
-				"s3:PutObject",
-				"s3:DeleteObject"
-			],
-			"Resource": "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}/*",
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
 			"Principal": {
-				"AWS": "${var.principal_arn}"
-			}
+ 			  "AWS": "${var.principal_arn}"
+ 		  },
+			"Resource": [
+        "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}",
+        "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}/*"
+      ]
 		}
 	]
 }
 EOF
 }
+
+# resource "aws_s3_bucket_policy" "terraform_state_policy" {
+#   bucket = aws_s3_bucket.terraform_state.bucket
+#   depends_on = [aws_s3_bucket.terraform_state]
+#   policy = <<EOF
+# {
+# 	"Version": "2012-10-17",
+# 	"Statement": [
+# 		{
+# 			"Sid": "ListBucketContents",
+# 			"Effect": "Allow",
+# 			"Action": "s3:ListBucket",
+# 			"Resource": "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}",
+# 			"Principal": {
+# 				"AWS": "${var.principal_arn}"
+# 			}
+# 		},
+# 		{
+# 			"Sid": "GetPutDeleteObjects",
+# 			"Effect": "Allow",
+# 			"Action": [
+# 				"s3:GetObject",
+# 				"s3:PutObject",
+# 				"s3:DeleteObject"
+# 			],
+# 			"Resource": "arn:aws:s3:::${aws_s3_bucket.terraform_state.bucket}/*",
+# 			"Principal": {
+# 				"AWS": "${var.principal_arn}"
+# 			}
+# 		}
+# 	]
+# }
+# EOF
+# }
 
 # Add bucket encryption to hide sensitive state data
 resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state_encryption" {
