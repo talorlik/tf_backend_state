@@ -1,0 +1,185 @@
+name: TF Backend State Provisioning
+
+on:
+  workflow_dispatch:
+
+jobs:
+  InfraProvision:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    defaults:
+      run:
+        working-directory: ./tf_backend_state
+    steps:
+      - name: Checkout the repo code
+        uses: actions/checkout@v4
+
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.0
+
+      - name: Configure AWS credentials (State Account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_STATE_ACCOUNT_ROLE_ARN }}
+          role-session-name: GitHubActions-TFStateInfraProvision
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check for existing state file
+        uses: actions/github-script@v7
+        id: check_state
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const repo = context.repo;
+            let bucketName = '';
+            let exists = 'false';
+
+            try {
+              // Try to get existing BACKEND_BUCKET_NAME variable
+              const response = await github.rest.actions.getRepoVariable({
+                owner: repo.owner,
+                repo: repo.repo,
+                name: 'BACKEND_BUCKET_NAME'
+              });
+              bucketName = response.data.value || '';
+              if (bucketName) {
+                console.log(`Found existing BACKEND_BUCKET_NAME: ${bucketName}`);
+                exists = 'true';
+              } else {
+                console.log('BACKEND_BUCKET_NAME variable exists but is empty');
+                exists = 'false';
+              }
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('BACKEND_BUCKET_NAME variable does not exist, proceeding with new provisioning');
+                exists = 'false';
+              } else {
+                console.error('Error checking repository variable:', error.message);
+                throw error;
+              }
+            }
+
+            // Always set outputs to avoid linter warnings
+            core.setOutput('bucket_name', bucketName);
+            core.setOutput('exists', exists);
+
+      - name: Download existing state file if available
+        # Outputs are always set by check_state step (see line 70-71)
+        if: steps.check_state.outputs.exists == 'true' && steps.check_state.outputs.bucket_name != ''
+        env:
+          BUCKET_NAME: ${{ steps.check_state.outputs.bucket_name }}
+          BACKEND_PREFIX: ${{ vars.BACKEND_PREFIX }}
+        run: |
+          if [ -z "$BUCKET_NAME" ] || [ -z "$BACKEND_PREFIX" ]; then
+            echo "Bucket name or prefix is empty, skipping state file download"
+            exit 0
+          fi
+
+          S3_PATH="s3://${BUCKET_NAME}/${BACKEND_PREFIX}"
+          echo "Attempting to download state file from: ${S3_PATH}"
+
+          if aws s3 ls "$S3_PATH" 2>/dev/null | grep -q .; then
+            echo "State file exists, downloading..."
+            aws s3 cp "$S3_PATH" terraform.tfstate
+            echo "State file downloaded successfully"
+          else
+            echo "State file does not exist in S3, proceeding with new provisioning"
+          fi
+
+      - name: Terraform init
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Get current AWS principal ARN
+        id: get_principal_arn
+        run: |
+          PRINCIPAL_ARN=$(aws sts get-caller-identity --query Arn --output text)
+          echo "principal_arn=$PRINCIPAL_ARN" >> $GITHUB_OUTPUT
+          echo "Using principal ARN: $PRINCIPAL_ARN"
+
+      - name: Terraform plan
+        run: |
+          terraform plan -var-file="variables.tfvars" -var="principal_arn=${{ steps.get_principal_arn.outputs.principal_arn }}" -out terraform.tfplan
+
+      - name: Provision backend state
+        id: provision_backend
+        run: |
+          terraform apply -auto-approve terraform.tfplan
+          BUCKET_NAME=$(terraform output -raw bucket_name)
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+
+      - name: Save bucket name to GitHub repository variable
+        uses: actions/github-script@v7
+        env:
+          BUCKET_NAME: ${{ steps.provision_backend.outputs.bucket_name }}
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const bucketName = process.env.BUCKET_NAME;
+            const repo = context.repo;
+
+            if (!bucketName || bucketName.trim() === '') {
+              throw new Error('BUCKET_NAME is not set or is empty');
+            }
+
+            console.log(`Saving bucket name: ${bucketName}`);
+
+            try {
+              // Try to get existing bucket name variable
+              try {
+                await github.rest.actions.getRepoVariable({
+                  owner: repo.owner,
+                  repo: repo.repo,
+                  name: 'BACKEND_BUCKET_NAME'
+                });
+
+                // Update existing bucket name variable
+                await github.rest.actions.updateRepoVariable({
+                  owner: repo.owner,
+                  repo: repo.repo,
+                  name: 'BACKEND_BUCKET_NAME',
+                  value: bucketName
+                });
+                console.log('Updated repository variable BACKEND_BUCKET_NAME');
+              } catch (error) {
+                if (error.status === 404) {
+                  // Variable doesn't exist, create it
+                  await github.rest.actions.createRepoVariable({
+                    owner: repo.owner,
+                    repo: repo.repo,
+                    name: 'BACKEND_BUCKET_NAME',
+                    value: bucketName
+                  });
+                  console.log('Created repository variable BACKEND_BUCKET_NAME');
+                } else {
+                  throw error;
+                }
+              }
+            } catch (error) {
+              console.error('Error saving repository variable:', error.message);
+              console.error('Note: GITHUB_TOKEN may need write permissions for repository variables.');
+              console.error('Please ensure "Allow GitHub Actions to create and approve pull requests" is enabled in repository settings.');
+              throw error;
+            }
+
+      - name: Upload backend state file to S3
+        # Output is always set by provision_backend step (see line 118)
+        if: steps.provision_backend.outputs.bucket_name != ''
+        env:
+          BUCKET_NAME: ${{ steps.provision_backend.outputs.bucket_name }}
+          BACKEND_PREFIX: ${{ vars.BACKEND_PREFIX }}
+        run: |
+          if [ -z "$BUCKET_NAME" ] || [ -z "$BACKEND_PREFIX" ]; then
+            echo "Error: BUCKET_NAME or BACKEND_PREFIX is empty"
+            exit 1
+          fi
+          aws s3 cp terraform.tfstate s3://${BUCKET_NAME}/${BACKEND_PREFIX}

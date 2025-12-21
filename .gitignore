@@ -26,6 +26,12 @@ override.tf.json
 # Include override files you do wish to add to version control using negated pattern
 # !example_override.tf
 
+# Ignore transient lock info files created by terraform apply
+.terraform.tfstate.lock.info
+
+# Include override files you do wish to add to version control using negated pattern
+# !example_override.tf
+
 # Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
 # example: *tfplan*
 *.plan
@@ -35,6 +41,18 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+.cursor/
+
 .idea/
 
 .vscode/
+# Snyk Security Extension - AI Rules (auto-generated)
+.cursor/rules/snyk_rules.mdc
+
+# Generated backend configuration (created from tfstate-backend-values-template.hcl)
+backend_infra/backend.hcl
+application/backend.hcl
+
+.env
+
+.DS_Store
