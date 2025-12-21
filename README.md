@@ -547,11 +547,3 @@ access to a different principal
 > For multi-account setups, Account A stores state, and Account B
 > deploys resources. The workflows and scripts handle this automatically via role
 > assumption, and the principal ARN is automatically detected.
-
-## Related Documentation
-
-- [Main README](../README.md) - Project overview and quick start
-- [Backend Infrastructure](../backend_infra/README.md) - VPC, EKS, IRSA, and VPC
-endpoints
-- [Application Infrastructure](../application/README.md) - OpenLDAP, 2FA app,
-and supporting services
