@@ -23,6 +23,7 @@ creation
 - AWS SSO/OIDC configured (see AWS IAM Setup section)
 - Terraform >= 1.2.0 (for local execution)
 - AWS Cli V2
+- **For local execution**: AWS Secrets Manager secret named `github-role` containing role ARNs (see [Local Execution](#option-2-local-execution) section)
 
 ## GitHub Repository Configuration
 
@@ -49,9 +50,11 @@ workflows. Configure them at:
       Setup below)
       3. Attach permissions policy with S3 access to state bucket
       4. Copy the role ARN and set it as this secret
-    - **Used for**: Authenticating AWS API calls in GitHub Actions via OIDC (no
-    access keys needed)
+    - **Used for**:
+      - **GitHub Actions workflows**: Authenticating AWS API calls in GitHub Actions via OIDC (no access keys needed)
+      - **Local scripts**: Not used directly - local scripts retrieve the role ARN from AWS Secrets Manager instead (see [Local Execution](#option-2-local-execution) section)
     - **Permissions needed**: S3 access to create/manage state bucket
+    - **⚠️ Note**: For local script execution, ensure the same role ARN is stored in AWS Secrets Manager secret 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'
 
 2. `GH_TOKEN`
 
@@ -166,6 +169,8 @@ Configure these **required** variables in `variables.tfvars` before running:
 
 This is the recommended approach as it handles state file upload automatically.
 
+> **ℹ️ Note**: GitHub Actions workflows retrieve the role ARN directly from **GitHub repository secrets** (`AWS_STATE_ACCOUNT_ROLE_ARN`). This differs from local script execution, which uses AWS Secrets Manager.
+
 #### Provisioning 1 (Create Infrastructure)
 
 1. **Configure your variables**:
@@ -199,10 +204,10 @@ For local development or testing, use the provided automation scripts. These
 scripts handle role assumption, Terraform operations, state file management, and
 repository variable updates automatically.
 
-> **⚠️ IMPORTANT**: The scripts automatically assume the IAM role configured in
-`AWS_STATE_ACCOUNT_ROLE_ARN` GitHub secret. The S3 bucket policy grants access
-to the role ARN (used by GitHub Actions), not your local user ARN. Terraform
-will automatically detect and use the assumed role's ARN.
+> **⚠️ IMPORTANT**:
+> - **Secret Retrieval**: The local bash scripts (`get-state.sh` and `set-state.sh`) retrieve the role ARN from **AWS Secrets Manager** (secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'), not from GitHub repository secrets.
+> - **GitHub Actions**: The GitHub Actions workflows retrieve the role ARN directly from **GitHub repository secrets** (`AWS_STATE_ACCOUNT_ROLE_ARN`).
+> - **Role Assumption**: The scripts automatically assume the IAM role retrieved from AWS Secrets Manager. The S3 bucket policy grants access to the role ARN (used by GitHub Actions), not your local user ARN. Terraform will automatically detect and use the assumed role's ARN.
 
 #### Prerequisites for Local Execution
 
@@ -225,8 +230,19 @@ Before running the scripts, ensure you have:
    - GitHub CLI (`gh`)
    - `jq` (for JSON parsing)
 
-3. **GitHub repository configured**:
-   - `AWS_STATE_ACCOUNT_ROLE_ARN` secret set
+3. **AWS Secrets Manager configured**:
+   - Secret named `github-role` must exist in AWS Secrets Manager
+   - Secret must contain JSON with key `AWS_STATE_ACCOUNT_ROLE_ARN` (and optionally other role ARNs)
+   - Your AWS credentials must have `secretsmanager:GetSecretValue` permission for the `github-role` secret
+   - Example secret JSON structure:
+     ```json
+     {
+       "AWS_STATE_ACCOUNT_ROLE_ARN": "arn:aws:iam::<account-id>:role/<role-name>"
+     }
+     ```
+
+4. **GitHub repository configured**:
+   - `AWS_STATE_ACCOUNT_ROLE_ARN` secret set (used by GitHub Actions workflows, not local scripts)
    - `AWS_REGION` variable set (defaults to `us-east-1` if not set)
    - `BACKEND_PREFIX` variable set
    - `variables.tfvars` file configured with required variables
@@ -243,7 +259,7 @@ cd tf_backend_state
 
 **What the script does automatically**:
 
-1. Retrieves `AWS_STATE_ACCOUNT_ROLE_ARN` from GitHub repository secrets
+1. Retrieves `AWS_STATE_ACCOUNT_ROLE_ARN` from **AWS Secrets Manager** (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
 2. Retrieves `AWS_REGION` from GitHub repository variables (defaults to
 `us-east-1`)
 3. Retrieves `BACKEND_PREFIX` from GitHub repository variables
@@ -267,7 +283,7 @@ cd tf_backend_state
 
 **What the script does automatically**:
 
-1. Retrieves `AWS_STATE_ACCOUNT_ROLE_ARN` from GitHub repository secrets
+1. Retrieves `AWS_STATE_ACCOUNT_ROLE_ARN` from **AWS Secrets Manager** (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
 2. Retrieves `AWS_REGION` from GitHub repository variables (defaults to
 `us-east-1`)
 3. Assumes the IAM role with temporary credentials
@@ -361,7 +377,22 @@ incorrect
 - **Solution**:
   - Verify OIDC Identity Provider exists in Account A
   - Check role trust policy includes correct repository name
-  - Ensure `AWS_STATE_ACCOUNT_ROLE_ARN` secret contains the correct role ARN
+  - Ensure `AWS_STATE_ACCOUNT_ROLE_ARN` secret contains the correct role ARN (for GitHub Actions)
+
+### AWS Secrets Manager Issues (Local Scripts)
+
+- **Cause**: Local scripts cannot retrieve secret from AWS Secrets Manager
+- **Common issues and solutions**:
+  - **Secret doesn't exist**: Ensure secret named `github-role` exists in AWS Secrets Manager
+  - **Access denied**: Your AWS credentials must have `secretsmanager:GetSecretValue` permission for the `github-role` secret
+  - **Key not found**: Ensure the secret JSON contains key `AWS_STATE_ACCOUNT_ROLE_ARN`
+  - **Invalid JSON**: Verify the secret value is valid JSON format
+  - **Wrong region**: Ensure your AWS CLI is configured to the correct region where the secret exists
+- **Verification**:
+  ```bash
+  # Test secret retrieval manually
+  aws secretsmanager get-secret-value --secret-id github-role --query SecretString --output text | jq .
+  ```
 
 ### Bucket name conflicts
 

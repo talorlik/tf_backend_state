@@ -120,37 +120,78 @@ check_repo_secret_exists() {
     return 0
 }
 
-# Function to get repository secret value
-# Note: GitHub CLI doesn't allow reading secret values directly for security reasons
-# In GitHub Actions, secrets are automatically available as environment variables
-get_repo_secret_value() {
+# Function to retrieve secret from AWS Secrets Manager
+get_aws_secret() {
     local secret_name=$1
+    local secret_json
+    local exit_code
+
+    # Retrieve secret from AWS Secrets Manager
+    secret_json=$(aws secretsmanager get-secret-value \
+        --secret-id "$secret_name" \
+        --query SecretString \
+        --output text 2>&1)
+
+    # Capture exit code before checking
+    exit_code=$?
+
+    # Validate secret retrieval
+    if [ $exit_code -ne 0 ]; then
+        print_error "Failed to retrieve secret '${secret_name}' from AWS Secrets Manager"
+        print_error "Error: $secret_json"
+        return 1
+    fi
+
+    # Validate JSON can be parsed
+    if ! echo "$secret_json" | jq empty 2>/dev/null; then
+        print_error "Secret '${secret_name}' contains invalid JSON"
+        return 1
+    fi
+
+    echo "$secret_json"
+}
+
+# Function to get key value from secret JSON
+get_secret_key_value() {
+    local secret_json=$1
+    local key_name=$2
     local value
 
-    # In GitHub Actions, secrets are available as environment variables with the same name
-    # For local use, we check if it's set as an environment variable
-    value="${!secret_name:-}"
+    # Validate JSON can be parsed
+    if ! echo "$secret_json" | jq empty 2>/dev/null; then
+        print_error "Invalid JSON provided to get_secret_key_value"
+        return 1
+    fi
 
-    if [ -z "$value" ]; then
+    # Extract key value using jq
+    value=$(echo "$secret_json" | jq -r ".[\"${key_name}\"]" 2>/dev/null)
+
+    # Check if jq command succeeded
+    if [ $? -ne 0 ]; then
+        print_error "Failed to parse JSON or extract key '${key_name}'"
+        return 1
+    fi
+
+    # Check if key exists (jq returns "null" for non-existent keys)
+    if [ "$value" = "null" ] || [ -z "$value" ]; then
+        print_error "Key '${key_name}' not found in secret JSON or value is empty"
         return 1
     fi
 
     echo "$value"
 }
 
-# Retrieve ROLE_ARN from repository secret
-print_info "Retrieving AWS_STATE_ACCOUNT_ROLE_ARN from repository secrets..."
-if ! check_repo_secret_exists "AWS_STATE_ACCOUNT_ROLE_ARN"; then
-    print_error "AWS_STATE_ACCOUNT_ROLE_ARN secret not found in repository secrets."
-    echo "Please ensure AWS_STATE_ACCOUNT_ROLE_ARN is set in GitHub repository secrets."
+# Retrieve ROLE_ARN from AWS Secrets Manager
+print_info "Retrieving AWS_STATE_ACCOUNT_ROLE_ARN from AWS Secrets Manager..."
+SECRET_JSON=$(get_aws_secret "github-role" || echo "")
+if [ -z "$SECRET_JSON" ]; then
+    print_error "Failed to retrieve secret from AWS Secrets Manager"
     exit 1
 fi
 
-ROLE_ARN=$(get_repo_secret_value "AWS_STATE_ACCOUNT_ROLE_ARN" || echo "")
+ROLE_ARN=$(get_secret_key_value "$SECRET_JSON" "AWS_STATE_ACCOUNT_ROLE_ARN" || echo "")
 if [ -z "$ROLE_ARN" ]; then
-    print_error "Failed to retrieve AWS_STATE_ACCOUNT_ROLE_ARN secret value."
-    echo "In GitHub Actions, secrets are automatically available as environment variables."
-    echo "For local use, ensure the secret is available as an environment variable."
+    print_error "Failed to retrieve AWS_STATE_ACCOUNT_ROLE_ARN from secret"
     exit 1
 fi
 print_success "Retrieved AWS_STATE_ACCOUNT_ROLE_ARN"

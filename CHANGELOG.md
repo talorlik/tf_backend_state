@@ -30,6 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CHANGELOG.md** - This file, documenting all changes since inception
 
 ### Changed
+- **Secret Retrieval Refactor**:
+  - **Local Scripts**: Updated `get-state.sh` and `set-state.sh` to retrieve secrets from AWS Secrets Manager instead of environment variables
+  - **Split Secret Functions**: Replaced `get_repo_secret_value()` with two separate functions:
+    - `get_aws_secret(secret_name)` - Retrieves secret JSON from AWS Secrets Manager
+    - `get_secret_key_value(secret_json, key_name)` - Extracts key value from secret JSON with validation
+  - **AWS Secrets Manager Integration**: Scripts now retrieve role ARN from AWS Secrets Manager secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'
+  - **Enhanced Validation**: Added comprehensive error handling for secret existence, JSON parsing, and key validation
+  - **GitHub Actions**: Workflows continue to use GitHub repository secrets directly (no change to workflow behavior)
 - **Complete Infrastructure Refactor**:
   - **Removed DynamoDB state locking** - Replaced with file-based locking in S3 for simplicity and cost reduction
   - **Dynamic Principal ARN Detection** - Added `data.aws_caller_identity` to automatically detect and use current caller's ARN
