@@ -8,6 +8,7 @@ This repository provisions AWS infrastructure for Terraform remote state managem
 - **S3 bucket**: Stores Terraform state files with versioning, encryption, and file-based locking enabled
 - **Security features**: Public access blocked, private ACL, IAM-based access control
 - **Dynamic configuration**: Bucket name includes AWS account ID for global uniqueness; principal ARN automatically detected
+- **GitHub Pages Documentation**: Comprehensive documentation site with theme toggle (light/dark), responsive design, and organized content sections
 
 **Critical**: This infrastructure is a prerequisite for other Terraform projects that use remote state. Changes here can affect multiple downstream projects.
 
@@ -260,6 +261,39 @@ Both scripts:
 - Provide colored output for success/error/info messages
 - Include comprehensive error handling for secret retrieval and validation
 - Validate JSON structure and key existence in AWS Secrets Manager secrets
+
+## Documentation
+
+### GitHub Pages Site
+
+This repository includes a comprehensive documentation website hosted via GitHub Pages:
+
+**Location**: `docs/` directory
+
+**Files**:
+- `index.html`: Full-featured documentation page with sticky navigation, theme toggle, and responsive design
+- `light-theme.css`: Professional light theme with GitHub-inspired color scheme
+- `dark-theme.css`: Professional dark theme for better readability in low-light environments
+- `favicon.ico`: Site icon for browser tabs
+- `header_banner.png`: Visual branding banner for the documentation header
+
+**Features**:
+- **Sticky navigation**: Easy access to all sections while scrolling
+- **Theme toggle**: Switch between light and dark themes with persistent preference (saved to localStorage)
+- **Responsive design**: Mobile-friendly layout that adapts to different screen sizes
+- **Active section highlighting**: Visual indication of current section in navigation
+- **Smooth scrolling**: Enhanced user experience with animated transitions
+- **Organized sections**: Overview, Prerequisites, Configuration, Getting Started, Architecture, Security, Troubleshooting, Support
+
+**Accessing the Documentation**:
+- If GitHub Pages is enabled for this repository, access it at: `https://<username>.github.io/<repository-name>/`
+- Or open `docs/index.html` locally in a web browser
+
+**Updating the Documentation**:
+- Edit `docs/index.html` to update content
+- Modify `docs/light-theme.css` or `docs/dark-theme.css` to adjust styling
+- Replace `docs/header_banner.png` or `docs/favicon.ico` to update branding
+- Changes will be reflected immediately when viewing locally or after pushing to GitHub (if GitHub Pages is enabled)
 
 ## Terraform Provider Constraints
 
