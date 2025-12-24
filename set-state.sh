@@ -106,20 +106,6 @@ set_repo_variable() {
     fi
 }
 
-# Function to check if repository secret exists using GitHub CLI
-check_repo_secret_exists() {
-    local secret_name=$1
-    local exists
-
-    exists=$(gh secret list --repo "${REPO_OWNER}/${REPO_NAME}" --json name --jq ".[] | select(.name == \"${secret_name}\") | .name" 2>/dev/null || echo "")
-
-    if [ -z "$exists" ]; then
-        return 1
-    fi
-
-    return 0
-}
-
 # Function to retrieve secret from AWS Secrets Manager
 get_aws_secret() {
     local secret_name=$1

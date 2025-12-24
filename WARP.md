@@ -11,6 +11,22 @@ This repository provisions AWS infrastructure for Terraform remote state managem
 
 **Critical**: This infrastructure is a prerequisite for other Terraform projects that use remote state. Changes here can affect multiple downstream projects.
 
+## Prerequisites
+
+**For GitHub Actions:**
+- GitHub repository with Actions enabled
+- AWS OIDC Identity Provider configured
+- GitHub secrets and variables configured (see Configuration Files section)
+
+**For Local Execution:**
+- AWS CLI V2
+- Terraform >= 1.14.0
+- GitHub CLI (`gh`) installed and authenticated
+- `jq` for JSON parsing
+- AWS Secrets Manager secret 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'
+- IAM permissions: `secretsmanager:GetSecretValue` for 'github-role' secret
+- IAM permissions: Assume role specified in `AWS_STATE_ACCOUNT_ROLE_ARN`
+
 ## Common Commands
 
 ### Automated State Management (Recommended)
@@ -128,6 +144,52 @@ This infrastructure uses **file-based locking** instead of DynamoDB:
 - **Public Access**: Explicitly blocked via `aws_s3_bucket_public_access_block`
 - **Encryption**: AES256 encryption at rest for all state files
 - **State Files**: The `.gitignore` excludes `terraform.tfstate*` files - never commit state files as they contain sensitive data
+- **AWS Secrets Manager**: Local scripts retrieve role ARN from AWS Secrets Manager with proper validation and error handling
+
+### AWS Secrets Manager Setup (for Local Scripts)
+
+Local bash scripts require an AWS Secrets Manager secret to store the role ARN:
+
+**Secret Configuration:**
+- **Secret name**: `github-role`
+- **Secret type**: Key-value pairs (or JSON string)
+- **Required key**: `AWS_STATE_ACCOUNT_ROLE_ARN`
+- **Value format**: IAM role ARN (e.g., `arn:aws:iam::123456789012:role/github-actions-state-role`)
+
+**Example JSON structure:**
+```json
+{
+  "AWS_STATE_ACCOUNT_ROLE_ARN": "arn:aws:iam::<account-id>:role/<role-name>"
+}
+```
+
+**Creating the secret via AWS CLI:**
+```bash
+aws secretsmanager create-secret \
+  --name github-role \
+  --description "IAM role ARNs for GitHub Actions" \
+  --secret-string '{"AWS_STATE_ACCOUNT_ROLE_ARN":"arn:aws:iam::<account-id>:role/<role-name>"}'
+```
+
+**Required IAM permissions for your user:**
+Your AWS user/role must have permission to retrieve the secret:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:github-role-*"
+    }
+  ]
+}
+```
+
+**Testing secret retrieval:**
+```bash
+aws secretsmanager get-secret-value --secret-id github-role --query SecretString --output text | jq .
+```
 
 ## CI/CD Workflows
 
@@ -150,10 +212,14 @@ Two workflows are configured, both using **OIDC authentication** (no access keys
 - Destroys all infrastructure
 - **Warning**: This will delete the S3 bucket, breaking any dependent Terraform projects
 
+**Note**: Both workflows use OIDC authentication and retrieve the role ARN from GitHub repository secrets (`AWS_STATE_ACCOUNT_ROLE_ARN`), not from AWS Secrets Manager.
+
 ### Required GitHub Configuration
 
 **Secrets:**
 - `AWS_STATE_ACCOUNT_ROLE_ARN`: ARN of IAM role that trusts GitHub OIDC provider
+  - **Used by**: GitHub Actions workflows (retrieved directly from GitHub repository secrets)
+  - **For local scripts**: The same role ARN must be stored in AWS Secrets Manager (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
 - `GH_TOKEN`: GitHub Personal Access Token with `repo` scope (for writing repository variables)
 
 **Variables:**
@@ -166,20 +232,34 @@ Two workflows are configured, both using **OIDC authentication** (no access keys
 Two bash scripts automate state file management:
 
 ### set-state.sh
-- Retrieves GitHub secrets/variables via `gh` CLI
+- Retrieves role ARN from **AWS Secrets Manager** (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
+- Retrieves repository variables via `gh` CLI
 - Assumes IAM role with temporary credentials
 - Runs terraform init, validate, plan, apply (if infrastructure doesn't exist)
 - Saves bucket name to GitHub repository variable
 - Uploads state file to S3
 - **Prerequisites**: AWS CLI, Terraform, GitHub CLI (`gh`), `jq`
+- **AWS Secrets Manager Requirements**:
+  - Secret named `github-role` must exist
+  - Secret must contain JSON with key `AWS_STATE_ACCOUNT_ROLE_ARN`
+  - User must have `secretsmanager:GetSecretValue` permission
 
 ### get-state.sh
-- Retrieves GitHub secrets/variables via `gh` CLI
+- Retrieves role ARN from **AWS Secrets Manager** (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
+- Retrieves repository variables via `gh` CLI
 - Assumes IAM role with temporary credentials
 - Downloads state file from S3 if it exists
 - **Prerequisites**: AWS CLI, GitHub CLI (`gh`), `jq`
+- **AWS Secrets Manager Requirements**:
+  - Secret named `github-role` must exist
+  - Secret must contain JSON with key `AWS_STATE_ACCOUNT_ROLE_ARN`
+  - User must have `secretsmanager:GetSecretValue` permission
 
-Both scripts handle role assumption automatically and provide colored output for success/error/info messages.
+Both scripts:
+- Handle role assumption automatically
+- Provide colored output for success/error/info messages
+- Include comprehensive error handling for secret retrieval and validation
+- Validate JSON structure and key existence in AWS Secrets Manager secrets
 
 ## Terraform Provider Constraints
 
@@ -192,6 +272,11 @@ Both scripts handle role assumption automatically and provide colored output for
 - **No DynamoDB**: This setup uses file-based locking in S3 instead of DynamoDB for simplicity and lower cost
 - **Dynamic Principal**: The `principal_arn` variable is optional and defaults to the current caller's ARN - no hardcoded values!
 - **OIDC Authentication**: GitHub Actions uses OIDC to assume an IAM role instead of using access keys
+- **AWS Secrets Manager**:
+  - Local scripts retrieve role ARN from AWS Secrets Manager (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')
+  - GitHub Actions retrieve role ARN directly from GitHub repository secrets
+  - User must have `secretsmanager:GetSecretValue` permission for the 'github-role' secret
+  - Secret must contain valid JSON with the required key
 - **Force Destroy**: The S3 bucket has `force_destroy = true`, allowing deletion even if it contains files - use with caution
 - **Provider Versions**: The `.terraform.lock.hcl` file tracks provider versions - commit changes when upgrading providers
 - **State Files**: Never commit `terraform.tfstate*` files to version control - they contain sensitive data and are in `.gitignore`
@@ -205,4 +290,5 @@ This infrastructure differs from typical Terraform backend setups:
 2. **No DynamoDB**: Uses file-based locking instead of DynamoDB table for state locking
 3. **OIDC-based CI/CD**: GitHub Actions uses OIDC provider instead of access keys
 4. **Automated scripts**: Bash scripts handle role assumption and state file management
-5. **Account ID in bucket name**: Ensures global uniqueness without manual naming conflicts
+5. **AWS Secrets Manager integration**: Local scripts retrieve secrets from AWS Secrets Manager instead of environment variables
+6. **Account ID in bucket name**: Ensures global uniqueness without manual naming conflicts
