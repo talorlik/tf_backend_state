@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terraform Backend State Infrastructure - Documentation</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="stylesheet" href="light-theme.css" id="theme-stylesheet">
+</head>
+<body>
+    <!-- Sticky Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#hero" class="nav-logo">Terraform Backend State</a>
+            <button class="mobile-menu-toggle" id="mobileMenuToggle">☰</button>
+            <ul class="nav-menu" id="navMenu">
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#prerequisites">Prerequisites</a></li>
+                <li><a href="#configuration">Configuration</a></li>
+                <li><a href="#getting-started">Getting Started</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#security">Security</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#support">Support</a></li>
+                <li>
+                    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                        <span class="icon" id="sunIcon" title="Switch to light theme">☀️</span>
+                        <span class="icon hidden" id="moonIcon" title="Switch to dark theme">🌙</span>
+                    </button>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section id="hero" class="hero">
+        <div class="hero-content">
+            <h1>Terraform Backend State Infrastructure</h1>
+            <p>Complete AWS infrastructure setup for storing Terraform state files remotely using S3 with versioning, encryption, and file-based locking</p>
+            <img src="header_banner.png" alt="Project Banner" class="hero-banner">
+        </div>
+    </section>
+
+    <!-- Project Overview -->
+    <section id="overview">
+        <h2>Project Overview</h2>
+        <div class="card">
+            <p>This directory contains Terraform configuration to provision the AWS infrastructure needed to store Terraform state files remotely. This includes an S3 bucket for state storage with file-based locking.</p>
+        </div>
+
+        <h3>What Gets Created</h3>
+        <ul>
+            <li><strong>S3 Bucket</strong>: Stores Terraform state files with versioning enabled and file-based locking
+                <ul>
+                    <li>Name format: <code>{prefix}-{account-id}-s3-tfstate</code></li>
+                    <li>Versioning enabled (allows recovery of previous state versions)</li>
+                    <li>Encryption at rest (AES256)</li>
+                    <li>Private access (no public access)</li>
+                    <li>IAM-based access control</li>
+                    <li>Force destroy enabled (allows bucket deletion even if not empty)</li>
+                </ul>
+            </li>
+            <li><strong>State Locking</strong>: File-based locking using <code>use_lockfile = true</code> in the backend configuration
+                <ul>
+                    <li>Location: Lock file is stored in the same S3 bucket as the state file</li>
+                    <li>Benefits: Simpler setup, lower cost, lock file stored alongside state in S3</li>
+                </ul>
+            </li>
+            <li><strong>Security Features</strong>:
+                <ul>
+                    <li>S3 Bucket Policy: Grants access only to the specified IAM principal</li>
+                    <li>Public Access Block: Prevents any public access to the S3 bucket</li>
+                    <li>Encryption: All data encrypted at rest</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>Key Features</h3>
+        <ul>
+            <li><strong>OIDC Authentication</strong>: GitHub Actions authentication via AWS SSO/OIDC (no access keys needed)</li>
+            <li><strong>Automated State Management</strong>: Automatic state file upload and download via GitHub Actions workflows</li>
+            <li><strong>Local Scripts</strong>: Bash scripts for local development with automatic role assumption</li>
+            <li><strong>Dynamic Principal Detection</strong>: Automatically uses current caller's ARN for bucket policy</li>
+            <li><strong>Multi-Account Support</strong>: Designed for Account A (state storage) and Account B (resource deployment) setups</li>
+        </ul>
+    </section>
+
+    <!-- Prerequisites -->
+    <section id="prerequisites">
+        <h2>Prerequisites</h2>
+
+        <h3>Required Accounts and Services</h3>
+        <ul>
+            <li><strong>AWS Account A (State Account)</strong> with appropriate permissions for S3 bucket creation</li>
+            <li><strong>GitHub repository</strong> with Actions enabled</li>
+            <li><strong>AWS SSO/OIDC configured</strong> (see AWS IAM Setup section)</li>
+            <li><strong>Terraform >= 1.2.0</strong> (for local execution)</li>
+            <li><strong>AWS CLI V2</strong></li>
+            <li><strong>For local execution</strong>: AWS Secrets Manager secret named <code>github-role</code> containing role ARNs</li>
+        </ul>
+
+        <h3>GitHub Repository Configuration</h3>
+        <div class="card">
+            <h4>Required Secrets</h4>
+            <p>Configure these at: <strong>Repository → Settings → Secrets and variables → Actions → Secrets</strong></p>
+            <ul>
+                <li><strong><code>AWS_STATE_ACCOUNT_ROLE_ARN</code></strong>
+                    <ul>
+                        <li>Type: Secret</li>
+                        <li>Description: ARN of the IAM role in Account A (State Account) that trusts GitHub OIDC provider</li>
+                        <li>Format: <code>arn:aws:iam::ACCOUNT_A_ID:role/github-actions-state-role</code></li>
+                        <li>Used for: GitHub Actions workflows (authenticating AWS API calls via OIDC)</li>
+                        <li>⚠️ Note: For local script execution, ensure the same role ARN is stored in AWS Secrets Manager secret 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'</li>
+                    </ul>
+                </li>
+                <li><strong><code>GH_TOKEN</code></strong>
+                    <ul>
+                        <li>Type: Secret</li>
+                        <li>Description: GitHub Personal Access Token (PAT) with <code>repo</code> scope</li>
+                        <li>Used for: Creating/updating the <code>BACKEND_BUCKET_NAME</code> repository variable after provisioning</li>
+                        <li>Why needed: The default <code>GITHUB_TOKEN</code> may not have permissions to write repository variables</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h4>Required Variables</h4>
+            <p>Configure these at: <strong>Repository → Settings → Secrets and variables → Actions → Variables</strong></p>
+            <ul>
+                <li><strong><code>AWS_REGION</code></strong>
+                    <ul>
+                        <li>Type: Variable</li>
+                        <li>Description: AWS region where resources will be created</li>
+                        <li>Example values: <code>us-east-1</code>, <code>us-west-2</code>, <code>eu-west-1</code></li>
+                        <li>⚠️ Important: This should match the region in your <code>variables.tfvars</code> file</li>
+                    </ul>
+                </li>
+                <li><strong><code>BACKEND_PREFIX</code></strong>
+                    <ul>
+                        <li>Type: Variable</li>
+                        <li>Description: The prefix that will be created once the state file is saved in the bucket</li>
+                        <li>Example values: <code>backend_state/terraform.tfstate</code></li>
+                    </ul>
+                </li>
+                <li><strong><code>BACKEND_BUCKET_NAME</code></strong> (Auto-generated)
+                    <ul>
+                        <li>Type: Variable</li>
+                        <li>Description: The dynamically generated S3 bucket name</li>
+                        <li>How it's created: Automatically set by the provisioning workflow after the bucket is created</li>
+                        <li>⚠️ Note: You don't need to create this manually - it's created automatically</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <h3>Terraform Variables</h3>
+        <p>Configure these <strong>required</strong> variables in <code>variables.tfvars</code> before running:</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Variable</th>
+                    <th>Type</th>
+                    <th>Description</th>
+                    <th>Example</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>env</code></td>
+                    <td>string</td>
+                    <td>Deployment environment identifier</td>
+                    <td><code>"prod"</code>, <code>"dev"</code>, <code>"staging"</code></td>
+                </tr>
+                <tr>
+                    <td><code>region</code></td>
+                    <td>string</td>
+                    <td>AWS region for resource deployment</td>
+                    <td><code>"us-east-1"</code>, <code>"us-west-2"</code></td>
+                </tr>
+                <tr>
+                    <td><code>prefix</code></td>
+                    <td>string</td>
+                    <td>Prefix added to all resource names for identification</td>
+                    <td><code>"mycompany-tf"</code>, <code>"project-name"</code></td>
+                </tr>
+                <tr>
+                    <td><code>principal_arn</code></td>
+                    <td>string (optional)</td>
+                    <td>IAM principal ARN. If not provided, defaults to current caller's ARN (automatically detected)</td>
+                    <td><code>"arn:aws:iam::123456789012:user/myuser"</code></td>
+                </tr>
+            </tbody>
+        </table>
+    </section>
+
+    <!-- Configuration -->
+    <section id="configuration">
+        <h2>Configuration</h2>
+
+        <h3>AWS IAM Setup</h3>
+        <div class="card">
+            <h4>Step 1: Create OIDC Identity Provider</h4>
+            <ol>
+                <li>Navigate to AWS IAM Console → <strong>Identity providers</strong> (left sidebar)</li>
+                <li>Click <strong>Add provider</strong></li>
+                <li>Select <strong>OpenID Connect</strong></li>
+                <li><strong>Provider URL</strong>: <code>https://token.actions.githubusercontent.com</code></li>
+                <li>Click <strong>Get thumbprint</strong> (AWS will automatically fetch GitHub's certificate thumbprint)</li>
+                <li><strong>Audience</strong>: <code>sts.amazonaws.com</code></li>
+                <li>Click <strong>Add provider</strong></li>
+            </ol>
+
+            <h4>Step 2: Create IAM Role</h4>
+            <ol>
+                <li>Navigate to AWS IAM Console → <strong>Roles</strong> (left sidebar)</li>
+                <li>Click <strong>Create role</strong></li>
+                <li>Under <strong>Trusted entity type</strong>, select <strong>Web identity</strong></li>
+                <li>Under <strong>Web identity</strong>, select the Identity Provider: <code>token.actions.githubusercontent.com</code></li>
+                <li><strong>Audience</strong>: Select <code>sts.amazonaws.com</code> from the dropdown</li>
+                <li>Click <strong>Add condition</strong> to restrict which repositories can assume this role:
+                    <ul>
+                        <li><strong>Condition key</strong>: <code>token.actions.githubusercontent.com:sub</code></li>
+                        <li><strong>Operator</strong>: <code>StringLike</code></li>
+                        <li><strong>Value</strong>: <code>repo:YOUR_ORG/YOUR_REPO:*</code> (replace with your GitHub organization and repository name)</li>
+                    </ul>
+                </li>
+                <li>Add permissions: Create or attach a policy with S3 permissions for the state bucket</li>
+                <li>Name the role: <code>github-actions-state-role</code> (or your preferred name)</li>
+                <li>Click <strong>Create role</strong></li>
+                <li>Copy the <strong>Role ARN</strong> and set it as <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> GitHub secret</li>
+            </ol>
+
+            <h4>Step 3: S3 Bucket Policy (Automatic)</h4>
+            <p>The bucket policy in <code>main.tf</code> automatically uses the current caller's ARN by default. <strong>No configuration needed!</strong></p>
+            <ul>
+                <li>When running via GitHub Actions: The workflow automatically detects the assumed role's ARN and uses it</li>
+                <li>When running locally: The scripts automatically assume the IAM role and Terraform detects the assumed role's ARN</li>
+                <li>The <code>principal_arn</code> variable is optional - only set it if you need to grant access to a different principal</li>
+            </ul>
+        </div>
+
+        <h3>Local Execution Prerequisites</h3>
+        <div class="card">
+            <p>For local development or testing, ensure you have:</p>
+            <ul>
+                <li><strong>GitHub CLI installed and authenticated</strong>:
+                    <pre><code># Install GitHub CLI (if not already installed)
+# macOS: brew install gh
+# Linux: See https://cli.github.com/manual/installation
+
+# Authenticate with GitHub
+gh auth login</code></pre>
+                </li>
+                <li><strong>Required tools installed</strong>:
+                    <ul>
+                        <li>AWS CLI V2</li>
+                        <li>Terraform >= 1.2.0</li>
+                        <li>GitHub CLI (<code>gh</code>)</li>
+                        <li><code>jq</code> (for JSON parsing)</li>
+                    </ul>
+                </li>
+                <li><strong>AWS Secrets Manager configured</strong>:
+                    <ul>
+                        <li>Secret named <code>github-role</code> must exist in AWS Secrets Manager</li>
+                        <li>Secret must contain JSON with key <code>AWS_STATE_ACCOUNT_ROLE_ARN</code></li>
+                        <li>Your AWS credentials must have <code>secretsmanager:GetSecretValue</code> permission</li>
+                        <li>Example secret JSON structure:
+                            <pre><code>{
+  "AWS_STATE_ACCOUNT_ROLE_ARN": "arn:aws:iam::&lt;account-id&gt;:role/&lt;role-name&gt;"
+}</code></pre>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Getting Started -->
+    <section id="getting-started">
+        <h2>Getting Started</h2>
+
+        <h3>Option 1: GitHub Actions (Recommended)</h3>
+        <div class="card">
+            <p>This is the recommended approach as it handles state file upload automatically.</p>
+            <p>⚠️ <strong>Note</strong>: GitHub Actions workflows retrieve the role ARN directly from <strong>GitHub repository secrets</strong> (<code>AWS_STATE_ACCOUNT_ROLE_ARN</code>). This differs from local script execution, which uses AWS Secrets Manager.</p>
+        </div>
+
+        <h4>Provisioning (Create Infrastructure)</h4>
+        <div class="deployment-options">
+            <div class="deployment-card">
+                <h3>Step 1: Configure Variables</h3>
+                <p>Edit <code>variables.tfvars</code> with your values:</p>
+                <pre><code>env    = "prod"
+region = "us-east-1"
+prefix = "mycompany-tf"</code></pre>
+                <p>Commit and push the changes.</p>
+            </div>
+
+            <div class="deployment-card">
+                <h3>Step 2: Run the Workflow</h3>
+                <ol>
+                    <li>Go to GitHub → <strong>Actions</strong> tab</li>
+                    <li>Select <strong>"TF Backend State Provisioning"</strong> workflow</li>
+                    <li>Click <strong>"Run workflow"</strong> → <strong>"Run workflow"</strong></li>
+                </ol>
+                <p>The workflow will:</p>
+                <ul>
+                    <li>Validate Terraform configuration</li>
+                    <li>Create the S3 bucket</li>
+                    <li>Save the bucket name as a repository variable</li>
+                    <li>Upload the state file to S3</li>
+                </ul>
+            </div>
+        </div>
+
+        <h4>Destroying (Remove Infrastructure)</h4>
+        <div class="card">
+            <ol>
+                <li>Go to GitHub → <strong>Actions</strong> tab</li>
+                <li>Select <strong>"TF Backend State Destroying"</strong> workflow</li>
+                <li>Click <strong>"Run workflow"</strong> → <strong>"Run workflow"</strong></li>
+            </ol>
+            <p>⚠️ <strong>Warning</strong>: This permanently deletes the S3 bucket.</p>
+        </div>
+
+        <h3>Option 2: Local Execution</h3>
+        <div class="card">
+            <p>For local development or testing, use the provided automation scripts. These scripts handle role assumption, Terraform operations, state file management, and repository variable updates automatically.</p>
+            <p>⚠️ <strong>IMPORTANT</strong>:</p>
+            <ul>
+                <li><strong>Secret Retrieval</strong>: The local bash scripts (<code>get-state.sh</code> and <code>set-state.sh</code>) retrieve the role ARN from <strong>AWS Secrets Manager</strong> (secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'), not from GitHub repository secrets.</li>
+                <li><strong>GitHub Actions</strong>: The GitHub Actions workflows retrieve the role ARN directly from <strong>GitHub repository secrets</strong> (<code>AWS_STATE_ACCOUNT_ROLE_ARN</code>).</li>
+                <li><strong>Role Assumption</strong>: The scripts automatically assume the IAM role retrieved from AWS Secrets Manager. The S3 bucket policy grants access to the role ARN (used by GitHub Actions), not your local user ARN. Terraform will automatically detect and use the assumed role's ARN.</li>
+            </ul>
+        </div>
+
+        <h4>Provisioning (Create Infrastructure)</h4>
+        <div class="card">
+            <p>Use the <code>set-state.sh</code> script to provision infrastructure and upload the state file:</p>
+            <pre><code>cd tf_backend_state
+./set-state.sh</code></pre>
+            <p><strong>What the script does automatically</strong>:</p>
+            <ol>
+                <li>Retrieves <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> from <strong>AWS Secrets Manager</strong> (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')</li>
+                <li>Retrieves <code>AWS_REGION</code> from GitHub repository variables (defaults to <code>us-east-1</code>)</li>
+                <li>Retrieves <code>BACKEND_PREFIX</code> from GitHub repository variables</li>
+                <li>Assumes the IAM role with temporary credentials</li>
+                <li>Checks if infrastructure already exists:
+                    <ul>
+                        <li><strong>If not exists</strong>: Runs <code>terraform init</code>, <code>validate</code>, <code>plan</code>, and <code>apply</code></li>
+                        <li><strong>If exists</strong>: Downloads existing state file from S3 (if available)</li>
+                    </ul>
+                </li>
+                <li>Saves bucket name to GitHub repository variable <code>BACKEND_BUCKET_NAME</code></li>
+                <li>Uploads <code>terraform.tfstate</code> to S3 (only if infrastructure was just provisioned)</li>
+            </ol>
+        </div>
+
+        <h4>Downloading Existing State File</h4>
+        <div class="card">
+            <p>If you need to download the state file from S3 (e.g., after running via GitHub Actions), use the <code>get-state.sh</code> script:</p>
+            <pre><code>cd tf_backend_state
+./get-state.sh</code></pre>
+            <p><strong>What the script does automatically</strong>:</p>
+            <ol>
+                <li>Retrieves <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> from <strong>AWS Secrets Manager</strong> (secret 'github-role', key 'AWS_STATE_ACCOUNT_ROLE_ARN')</li>
+                <li>Retrieves <code>AWS_REGION</code> from GitHub repository variables (defaults to <code>us-east-1</code>)</li>
+                <li>Assumes the IAM role with temporary credentials</li>
+                <li>Retrieves <code>BACKEND_BUCKET_NAME</code> and <code>BACKEND_PREFIX</code> from GitHub repository variables</li>
+                <li>Downloads <code>terraform.tfstate</code> from S3 if it exists</li>
+            </ol>
+        </div>
+
+        <h4>Destroying Infrastructure</h4>
+        <div class="card">
+            <p>To destroy the infrastructure, use Terraform directly (after downloading the state file if needed):</p>
+            <pre><code>cd tf_backend_state
+
+# Download state file if needed
+./get-state.sh
+
+# Destroy infrastructure
+terraform plan -var-file="variables.tfvars" -destroy -out terraform.tfplan
+terraform apply -auto-approve terraform.tfplan</code></pre>
+            <p>⚠️ <strong>Warning</strong>: This permanently deletes the S3 bucket and all resources.</p>
+        </div>
+    </section>
+
+    <!-- Architecture -->
+    <section id="architecture">
+        <h2>Architecture</h2>
+
+        <h3>State File Management</h3>
+        <div class="card">
+            <h4>After Provisioning</h4>
+            <ul>
+                <li>The state file is automatically uploaded to: <code>s3://{bucket-name}/{prefix}</code></li>
+                <li>The bucket name is saved as <code>BACKEND_BUCKET_NAME</code> repository variable</li>
+                <li>The variable is accessible to all workflows via <code>${{ vars.BACKEND_BUCKET_NAME }}</code></li>
+            </ul>
+
+            <h4>State File Location</h4>
+            <ul>
+                <li><strong>Path in S3</strong>: <code>{prefix}</code></li>
+                <li><strong>Versioning</strong>: Enabled, so you can recover previous versions if needed</li>
+            </ul>
+        </div>
+
+        <h3>Resource Naming</h3>
+        <ul>
+            <li><strong>S3 Bucket Name</strong>: <code>{prefix}-{account-id}-s3-tfstate</code>
+                <ul>
+                    <li>Includes account ID to ensure global uniqueness</li>
+                    <li>Example: <code>mycompany-tf-123456789012-s3-tfstate</code></li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>Security Architecture</h3>
+        <div class="card">
+            <h4>Authentication Flow</h4>
+            <ul>
+                <li><strong>GitHub Actions</strong>:
+                    <ol>
+                        <li>GitHub Actions workflow runs</li>
+                        <li>GitHub OIDC provider issues token</li>
+                        <li>AWS validates token against OIDC Identity Provider</li>
+                        <li>AWS allows assuming IAM role</li>
+                        <li>Terraform uses assumed role credentials</li>
+                    </ol>
+                </li>
+                <li><strong>Local Scripts</strong>:
+                    <ol>
+                        <li>Script retrieves role ARN from AWS Secrets Manager</li>
+                        <li>Script assumes IAM role using AWS CLI</li>
+                        <li>Terraform uses assumed role credentials</li>
+                    </ol>
+                </li>
+            </ul>
+
+            <h4>Access Control</h4>
+            <ul>
+                <li>S3 bucket policy grants access to the IAM role ARN (used by GitHub Actions)</li>
+                <li>Principal ARN is automatically detected from current caller (assumed role)</li>
+                <li>Public access is completely blocked</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Security -->
+    <section id="security">
+        <h2>Security Considerations</h2>
+
+        <div class="card">
+            <h3>Key Security Features</h3>
+            <ul>
+                <li><strong>OIDC Authentication</strong>: No access keys needed - GitHub Actions authenticates via OIDC tokens</li>
+                <li><strong>IAM Role-Based Access</strong>: Bucket policy restricts access to specific IAM principal</li>
+                <li><strong>Public Access Block</strong>: Prevents any public access to the S3 bucket</li>
+                <li><strong>Encryption at Rest</strong>: All data encrypted using AES256</li>
+                <li><strong>Versioning</strong>: State file versioning enabled for recovery capabilities</li>
+                <li><strong>Secrets Management</strong>: Role ARNs stored in AWS Secrets Manager (local) or GitHub Secrets (CI/CD)</li>
+            </ul>
+        </div>
+
+        <h3>Best Practices</h3>
+        <ul>
+            <li><strong>Use OIDC</strong>: Prefer OIDC authentication over access keys for GitHub Actions</li>
+            <li><strong>Restrict Role Trust</strong>: Use condition keys to restrict which repositories can assume the IAM role</li>
+            <li><strong>Minimal Permissions</strong>: Grant only necessary S3 permissions to the IAM role</li>
+            <li><strong>Never Commit State Files</strong>: State files contain sensitive information and are in <code>.gitignore</code></li>
+            <li><strong>Rotate Credentials</strong>: Regularly review and rotate IAM role permissions</li>
+            <li><strong>Monitor Access</strong>: Enable CloudTrail to monitor S3 bucket access</li>
+        </ul>
+
+        <h3>Important Notes</h3>
+        <div class="card">
+            <ul>
+                <li><strong>State File</strong>: The state file contains sensitive information. Never commit it to version control (it's in <code>.gitignore</code>).</li>
+                <li><strong>Bucket Deletion</strong>: The bucket has <code>force_destroy = true</code>, meaning it can be deleted even if it contains files. Use with caution.</li>
+                <li><strong>Costs</strong>:
+                    <ul>
+                        <li>S3: Minimal cost for storage (typically < $1/month for small projects)</li>
+                        <li>No additional costs for state locking (uses file-based locking in S3)</li>
+                    </ul>
+                </li>
+                <li><strong>Backup</strong>: State file versioning is enabled, so you can recover previous versions from the S3 console if needed.</li>
+                <li><strong>Multiple Environments</strong>: If you need multiple environments (dev, staging, prod), you can:
+                    <ul>
+                        <li>Use different prefixes in <code>variables.tfvars</code></li>
+                        <li>Or create separate Terraform workspaces</li>
+                        <li>Or use separate repositories/variables for each environment</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Troubleshooting -->
+    <section id="troubleshooting">
+        <h2>Troubleshooting</h2>
+
+        <h3>Common Issues</h3>
+
+        <div class="card">
+            <h4>"Resource not accessible by integration" error</h4>
+            <ul>
+                <li><strong>Cause</strong>: <code>GH_TOKEN</code> doesn't have proper permissions or doesn't exist</li>
+                <li><strong>Solution</strong>: Create a PAT with <code>repo</code> scope and store it as <code>GH_TOKEN</code> secret</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h4>"Access Denied" when accessing S3</h4>
+            <ul>
+                <li><strong>Cause</strong>: The IAM principal doesn't have S3 permissions, or there's a mismatch between the caller and the bucket policy</li>
+                <li><strong>Solution</strong>:
+                    <ul>
+                        <li>By default, <code>principal_arn</code> automatically uses the current caller's ARN. Verify this matches your expectations:
+                            <ul>
+                                <li>Run <code>aws sts get-caller-identity</code> to see your current ARN</li>
+                                <li>Ensure the caller has S3 permissions for the state bucket</li>
+                            </ul>
+                        </li>
+                        <li>If you've overridden <code>principal_arn</code>, verify it matches the IAM role ARN used in <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> secret (for GitHub Actions)</li>
+                        <li>Check that the OIDC trust relationship is correctly configured (for GitHub Actions)</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h4>OIDC Authentication Issues</h4>
+            <ul>
+                <li><strong>Cause</strong>: GitHub OIDC provider not configured correctly or role trust policy incorrect</li>
+                <li><strong>Solution</strong>:
+                    <ul>
+                        <li>Verify OIDC Identity Provider exists in Account A</li>
+                        <li>Check role trust policy includes correct repository name</li>
+                        <li>Ensure <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> secret contains the correct role ARN (for GitHub Actions)</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h4>AWS Secrets Manager Issues (Local Scripts)</h4>
+            <ul>
+                <li><strong>Cause</strong>: Local scripts cannot retrieve secret from AWS Secrets Manager</li>
+                <li><strong>Common issues and solutions</strong>:
+                    <ul>
+                        <li><strong>Secret doesn't exist</strong>: Ensure secret named <code>github-role</code> exists in AWS Secrets Manager</li>
+                        <li><strong>Access denied</strong>: Your AWS credentials must have <code>secretsmanager:GetSecretValue</code> permission for the <code>github-role</code> secret</li>
+                        <li><strong>Key not found</strong>: Ensure the secret JSON contains key <code>AWS_STATE_ACCOUNT_ROLE_ARN</code></li>
+                        <li><strong>Invalid JSON</strong>: Verify the secret value is valid JSON format</li>
+                        <li><strong>Wrong region</strong>: Ensure your AWS CLI is configured to the correct region where the secret exists</li>
+                    </ul>
+                </li>
+                <li><strong>Verification</strong>:
+                    <pre><code># Test secret retrieval manually
+aws secretsmanager get-secret-value --secret-id github-role --query SecretString --output text | jq .</code></pre>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h4>Bucket name conflicts</h4>
+            <ul>
+                <li><strong>Cause</strong>: Another account is using the same prefix</li>
+                <li><strong>Solution</strong>: Use a more unique prefix in <code>variables.tfvars</code></li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h4>State file not found during destroy</h4>
+            <ul>
+                <li><strong>Cause</strong>: The state file wasn't uploaded or the bucket name variable is incorrect</li>
+                <li><strong>Solution</strong>: Verify <code>BACKEND_BUCKET_NAME</code> variable exists and contains the correct bucket name</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Contributing & Support -->
+    <section id="support">
+        <h2>Support & Resources</h2>
+
+        <h3>Documentation</h3>
+        <div class="doc-grid">
+            <div class="doc-item">
+                <a href="../README.md">README</a>
+                <p>Complete project documentation with setup instructions and usage guide</p>
+            </div>
+            <div class="doc-item">
+                <a href="../CHANGELOG.md">Changelog</a>
+                <p>All notable changes to the project, organized by version</p>
+            </div>
+            <div class="doc-item">
+                <a href="../LICENSE">License</a>
+                <p>MIT License - Full license text</p>
+            </div>
+        </div>
+
+        <h3>Quick Reference</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Command/Workflow</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Provision infrastructure (GitHub Actions)</td>
+                    <td>Run "TF Backend State Provisioning" workflow</td>
+                </tr>
+                <tr>
+                    <td>Provision infrastructure (Local)</td>
+                    <td><code>./set-state.sh</code></td>
+                </tr>
+                <tr>
+                    <td>Download state file</td>
+                    <td><code>./get-state.sh</code></td>
+                </tr>
+                <tr>
+                    <td>Destroy infrastructure (GitHub Actions)</td>
+                    <td>Run "TF Backend State Destroying" workflow</td>
+                </tr>
+                <tr>
+                    <td>Destroy infrastructure (Local)</td>
+                    <td><code>terraform plan -destroy</code> then <code>terraform apply</code></td>
+                </tr>
+                <tr>
+                    <td>View current AWS identity</td>
+                    <td><code>aws sts get-caller-identity</code></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>License</h3>
+        <div class="card">
+            <p>This project is licensed under the <strong>MIT License</strong>.</p>
+            <p>See the <a href="../LICENSE">LICENSE</a> file for details.</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 Terraform Backend State Infrastructure</p>
+        <p>Complete AWS infrastructure setup for storing Terraform state files remotely</p>
+    </footer>
+
+    <script>
+        // Theme management
+        const themeStylesheet = document.getElementById('theme-stylesheet');
+        const themeToggle = document.getElementById('themeToggle');
+        const sunIcon = document.getElementById('sunIcon');
+        const moonIcon = document.getElementById('moonIcon');
+
+        // Get saved theme or default to light
+        const currentTheme = localStorage.getItem('theme') || 'light';
+
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                themeStylesheet.href = 'dark-theme.css';
+                // Show sun icon (to switch to light theme)
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
+                themeToggle.setAttribute('aria-label', 'Switch to light theme');
+                themeToggle.setAttribute('title', 'Switch to light theme');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                themeStylesheet.href = 'light-theme.css';
+                // Show moon icon (to switch to dark theme)
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
+                themeToggle.setAttribute('aria-label', 'Switch to dark theme');
+                themeToggle.setAttribute('title', 'Switch to dark theme');
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        // Initialize theme on page load
+        setTheme(currentTheme);
+
+        // Toggle theme on button click
+        themeToggle.addEventListener('click', () => {
+            const newTheme = themeStylesheet.href.includes('dark-theme.css') ? 'light' : 'dark';
+            setTheme(newTheme);
+        });
+
+        // Mobile menu toggle
+        const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+        const navMenu = document.getElementById('navMenu');
+
+        mobileMenuToggle.addEventListener('click', () => {
+            navMenu.classList.toggle('active');
+        });
+
+        // Close mobile menu when clicking on a link
+        const navLinks = document.querySelectorAll('.nav-menu a');
+        navLinks.forEach(link => {
+            link.addEventListener('click', () => {
+                navMenu.classList.remove('active');
+            });
+        });
+
+        // Active section highlighting
+        const sections = document.querySelectorAll('section[id]');
+        const navLinksArray = Array.from(navLinks);
+
+        function highlightActiveSection() {
+            const scrollY = window.pageYOffset;
+
+            sections.forEach(section => {
+                const sectionHeight = section.offsetHeight;
+                const sectionTop = section.offsetTop - 150;
+                const sectionId = section.getAttribute('id');
+
+                if (scrollY > sectionTop && scrollY <= sectionTop + sectionHeight) {
+                    navLinksArray.forEach(link => {
+                        link.classList.remove('active');
+                        if (link.getAttribute('href') === `#${sectionId}`) {
+                            link.classList.add('active');
+                        }
+                    });
+                }
+            });
+        }
+
+        window.addEventListener('scroll', highlightActiveSection);
+        window.addEventListener('load', highlightActiveSection);
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
