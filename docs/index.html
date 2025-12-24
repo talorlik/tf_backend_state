@@ -49,40 +49,44 @@
         </div>
 
         <h3>What Gets Created</h3>
-        <ul>
-            <li><strong>S3 Bucket</strong>: Stores Terraform state files with versioning enabled and file-based locking
-                <ul>
-                    <li>Name format: <code>{prefix}-{account-id}-s3-tfstate</code></li>
-                    <li>Versioning enabled (allows recovery of previous state versions)</li>
-                    <li>Encryption at rest (AES256)</li>
-                    <li>Private access (no public access)</li>
-                    <li>IAM-based access control</li>
-                    <li>Force destroy enabled (allows bucket deletion even if not empty)</li>
-                </ul>
-            </li>
-            <li><strong>State Locking</strong>: File-based locking using <code>use_lockfile = true</code> in the backend configuration
-                <ul>
-                    <li>Location: Lock file is stored in the same S3 bucket as the state file</li>
-                    <li>Benefits: Simpler setup, lower cost, lock file stored alongside state in S3</li>
-                </ul>
-            </li>
-            <li><strong>Security Features</strong>:
-                <ul>
-                    <li>S3 Bucket Policy: Grants access only to the specified IAM principal</li>
-                    <li>Public Access Block: Prevents any public access to the S3 bucket</li>
-                    <li>Encryption: All data encrypted at rest</li>
-                </ul>
-            </li>
-        </ul>
+        <div class="card">
+            <ul>
+                <li><strong>S3 Bucket</strong>: Stores Terraform state files with versioning enabled and file-based locking
+                    <ul>
+                        <li>Name format: <code>{prefix}-{account-id}-s3-tfstate</code></li>
+                        <li>Versioning enabled (allows recovery of previous state versions)</li>
+                        <li>Encryption at rest (AES256)</li>
+                        <li>Private access (no public access)</li>
+                        <li>IAM-based access control</li>
+                        <li>Force destroy enabled (allows bucket deletion even if not empty)</li>
+                    </ul>
+                </li>
+                <li><strong>State Locking</strong>: File-based locking using <code>use_lockfile = true</code> in the backend configuration
+                    <ul>
+                        <li>Location: Lock file is stored in the same S3 bucket as the state file</li>
+                        <li>Benefits: Simpler setup, lower cost, lock file stored alongside state in S3</li>
+                    </ul>
+                </li>
+                <li><strong>Security Features</strong>:
+                    <ul>
+                        <li>S3 Bucket Policy: Grants access only to the specified IAM principal</li>
+                        <li>Public Access Block: Prevents any public access to the S3 bucket</li>
+                        <li>Encryption: All data encrypted at rest</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
 
         <h3>Key Features</h3>
-        <ul>
-            <li><strong>OIDC Authentication</strong>: GitHub Actions authentication via AWS SSO/OIDC (no access keys needed)</li>
-            <li><strong>Automated State Management</strong>: Automatic state file upload and download via GitHub Actions workflows</li>
-            <li><strong>Local Scripts</strong>: Bash scripts for local development with automatic role assumption</li>
-            <li><strong>Dynamic Principal Detection</strong>: Automatically uses current caller's ARN for bucket policy</li>
-            <li><strong>Multi-Account Support</strong>: Designed for Account A (state storage) and Account B (resource deployment) setups</li>
-        </ul>
+        <div class="card">
+            <ul>
+                <li><strong>OIDC Authentication</strong>: GitHub Actions authentication via AWS SSO/OIDC (no access keys needed)</li>
+                <li><strong>Automated State Management</strong>: Automatic state file upload and download via GitHub Actions workflows</li>
+                <li><strong>Local Scripts</strong>: Bash scripts for local development with automatic role assumption</li>
+                <li><strong>Dynamic Principal Detection</strong>: Automatically uses current caller's ARN for bucket policy</li>
+                <li><strong>Multi-Account Support</strong>: Designed for Account A (state storage) and Account B (resource deployment) setups</li>
+            </ul>
+        </div>
     </section>
 
     <!-- Prerequisites -->
@@ -90,14 +94,16 @@
         <h2>Prerequisites</h2>
 
         <h3>Required Accounts and Services</h3>
-        <ul>
-            <li><strong>AWS Account A (State Account)</strong> with appropriate permissions for S3 bucket creation</li>
-            <li><strong>GitHub repository</strong> with Actions enabled</li>
-            <li><strong>AWS SSO/OIDC configured</strong> (see AWS IAM Setup section)</li>
-            <li><strong>Terraform >= 1.2.0</strong> (for local execution)</li>
-            <li><strong>AWS CLI V2</strong></li>
-            <li><strong>For local execution</strong>: AWS Secrets Manager secret named <code>github-role</code> containing role ARNs</li>
-        </ul>
+        <div class="card">
+            <ul>
+                <li><strong>AWS Account A (State Account)</strong> with appropriate permissions for S3 bucket creation</li>
+                <li><strong>GitHub repository</strong> with Actions enabled</li>
+                <li><strong>AWS SSO/OIDC configured</strong> (see AWS IAM Setup section)</li>
+                <li><strong>Terraform >= 1.2.0</strong> (for local execution)</li>
+                <li><strong>AWS CLI V2</strong></li>
+                <li><strong>For local execution</strong>: AWS Secrets Manager secret named <code>github-role</code> containing role ARNs</li>
+            </ul>
+        </div>
 
         <h3>GitHub Repository Configuration</h3>
         <div class="card">
@@ -287,7 +293,7 @@ gh auth login</code></pre>
         <h4>Provisioning (Create Infrastructure)</h4>
         <div class="deployment-options">
             <div class="deployment-card">
-                <h3>Step 1: Configure Variables</h3>
+                <h4>Step 1: Configure Variables</h4>
                 <p>Edit <code>variables.tfvars</code> with your values:</p>
                 <pre><code>env    = "prod"
 region = "us-east-1"
@@ -296,7 +302,7 @@ prefix = "mycompany-tf"</code></pre>
             </div>
 
             <div class="deployment-card">
-                <h3>Step 2: Run the Workflow</h3>
+                <h4>Step 2: Run the Workflow</h4>
                 <ol>
                     <li>Go to GitHub → <strong>Actions</strong> tab</li>
                     <li>Select <strong>"TF Backend State Provisioning"</strong> workflow</li>
@@ -406,14 +412,16 @@ terraform apply -auto-approve terraform.tfplan</code></pre>
         </div>
 
         <h3>Resource Naming</h3>
-        <ul>
-            <li><strong>S3 Bucket Name</strong>: <code>{prefix}-{account-id}-s3-tfstate</code>
-                <ul>
-                    <li>Includes account ID to ensure global uniqueness</li>
-                    <li>Example: <code>mycompany-tf-123456789012-s3-tfstate</code></li>
-                </ul>
-            </li>
-        </ul>
+        <div class="card">
+            <ul>
+                <li><strong>S3 Bucket Name</strong>: <code>{prefix}-{account-id}-s3-tfstate</code>
+                    <ul>
+                        <li>Includes account ID to ensure global uniqueness</li>
+                        <li>Example: <code>mycompany-tf-123456789012-s3-tfstate</code></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
 
         <h3>Security Architecture</h3>
         <div class="card">
@@ -450,8 +458,8 @@ terraform apply -auto-approve terraform.tfplan</code></pre>
     <section id="security">
         <h2>Security Considerations</h2>
 
+        <h3>Key Security Features</h3>
         <div class="card">
-            <h3>Key Security Features</h3>
             <ul>
                 <li><strong>OIDC Authentication</strong>: No access keys needed - GitHub Actions authenticates via OIDC tokens</li>
                 <li><strong>IAM Role-Based Access</strong>: Bucket policy restricts access to specific IAM principal</li>
@@ -463,14 +471,16 @@ terraform apply -auto-approve terraform.tfplan</code></pre>
         </div>
 
         <h3>Best Practices</h3>
-        <ul>
-            <li><strong>Use OIDC</strong>: Prefer OIDC authentication over access keys for GitHub Actions</li>
-            <li><strong>Restrict Role Trust</strong>: Use condition keys to restrict which repositories can assume the IAM role</li>
-            <li><strong>Minimal Permissions</strong>: Grant only necessary S3 permissions to the IAM role</li>
-            <li><strong>Never Commit State Files</strong>: State files contain sensitive information and are in <code>.gitignore</code></li>
-            <li><strong>Rotate Credentials</strong>: Regularly review and rotate IAM role permissions</li>
-            <li><strong>Monitor Access</strong>: Enable CloudTrail to monitor S3 bucket access</li>
-        </ul>
+        <div class="card">
+            <ul>
+                <li><strong>Use OIDC</strong>: Prefer OIDC authentication over access keys for GitHub Actions</li>
+                <li><strong>Restrict Role Trust</strong>: Use condition keys to restrict which repositories can assume the IAM role</li>
+                <li><strong>Minimal Permissions</strong>: Grant only necessary S3 permissions to the IAM role</li>
+                <li><strong>Never Commit State Files</strong>: State files contain sensitive information and are in <code>.gitignore</code></li>
+                <li><strong>Rotate Credentials</strong>: Regularly review and rotate IAM role permissions</li>
+                <li><strong>Monitor Access</strong>: Enable CloudTrail to monitor S3 bucket access</li>
+            </ul>
+        </div>
 
         <h3>Important Notes</h3>
         <div class="card">

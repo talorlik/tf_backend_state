@@ -208,6 +208,10 @@ section h4 {
     color: var(--text-color);
 }
 
+section h4:first-child {
+    margin-top: 0;
+}
+
 /* Cards */
 .card {
     background: var(--section-bg);
@@ -228,7 +232,7 @@ ul, ol {
     list-style-position: inside;
 }
 
-ul ul, ol ul {
+ul ul, ol ul, ul ol {
     padding-left: 20px;
 }
 
@@ -335,7 +339,7 @@ table tbody tr:hover {
     padding: 25px;
 }
 
-.deployment-card h3 {
+.deployment-card h4 {
     margin-top: 0;
     color: var(--primary-color);
 }
