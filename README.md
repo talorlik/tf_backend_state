@@ -169,7 +169,10 @@ Configure these **required** variables in `variables.tfvars` before running:
 
 This is the recommended approach as it handles state file upload automatically.
 
-> **ℹ️ Note**: GitHub Actions workflows retrieve the role ARN directly from **GitHub repository secrets** (`AWS_STATE_ACCOUNT_ROLE_ARN`). This differs from local script execution, which uses AWS Secrets Manager.
+> [!NOTE]
+>
+> GitHub Actions workflows retrieve the role ARN directly from **GitHub repository secrets** (`AWS_STATE_ACCOUNT_ROLE_ARN`).
+> This differs from local script execution, which uses AWS Secrets Manager.
 
 #### Provisioning 1 (Create Infrastructure)
 
@@ -204,10 +207,13 @@ For local development or testing, use the provided automation scripts. These
 scripts handle role assumption, Terraform operations, state file management, and
 repository variable updates automatically.
 
-> **⚠️ IMPORTANT**:
-> - **Secret Retrieval**: The local bash scripts (`get-state.sh` and `set-state.sh`) retrieve the role ARN from **AWS Secrets Manager** (secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'), not from GitHub repository secrets.
+> [!IMPORTANT]
+>
+> - **Secret Retrieval**: The local bash scripts (`get-state.sh` and `set-state.sh`) retrieve the role ARN from **AWS Secrets Manager**
+> (secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'), not from GitHub repository secrets.
 > - **GitHub Actions**: The GitHub Actions workflows retrieve the role ARN directly from **GitHub repository secrets** (`AWS_STATE_ACCOUNT_ROLE_ARN`).
-> - **Role Assumption**: The scripts automatically assume the IAM role retrieved from AWS Secrets Manager. The S3 bucket policy grants access to the role ARN (used by GitHub Actions), not your local user ARN. Terraform will automatically detect and use the assumed role's ARN.
+> - **Role Assumption**: The scripts automatically assume the IAM role retrieved from AWS Secrets Manager.
+> The S3 bucket policy grants access to the role ARN (used by GitHub Actions), not your local user ARN. Terraform will automatically detect and use the assumed role's ARN.
 
 #### Prerequisites for Local Execution
 
@@ -235,6 +241,7 @@ Before running the scripts, ensure you have:
    - Secret must contain JSON with key `AWS_STATE_ACCOUNT_ROLE_ARN` (and optionally other role ARNs)
    - Your AWS credentials must have `secretsmanager:GetSecretValue` permission for the `github-role` secret
    - Example secret JSON structure:
+
      ```json
      {
        "AWS_STATE_ACCOUNT_ROLE_ARN": "arn:aws:iam::<account-id>:role/<role-name>"
@@ -307,7 +314,9 @@ terraform plan -var-file="variables.tfvars" -destroy -out terraform.tfplan
 terraform apply -auto-approve terraform.tfplan
 ```
 
-> **⚠️ Warning**: This permanently deletes the S3 bucket and all resources.
+> [!IMPORTANT]
+>
+> This permanently deletes the S3 bucket and all resources.
 
 ## What Gets Created
 
@@ -341,8 +350,7 @@ S3
 
 - The state file is automatically uploaded to: `s3://{bucket-name}/{prefix}`
 - The bucket name is saved as `BACKEND_BUCKET_NAME` repository variable
-- The variable is accessible to all workflows via `${{ vars.BACKEND_BUCKET_NAME
-}}`
+- The variable is accessible to all workflows via `${{ vars.BACKEND_BUCKET_NAME}}`
 
 ### State File Location
 
@@ -389,6 +397,7 @@ incorrect
   - **Invalid JSON**: Verify the secret value is valid JSON format
   - **Wrong region**: Ensure your AWS CLI is configured to the correct region where the secret exists
 - **Verification**:
+
   ```bash
   # Test secret retrieval manually
   aws secretsmanager get-secret-value --secret-id github-role --query SecretString --output text | jq .
