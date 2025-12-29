@@ -1,231 +1,179 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to the Terraform Backend State infrastructure module
+will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-12-21
+## [Unreleased]
 
 ### Added
-- **GitHub Pages Documentation** - Created comprehensive documentation site in `docs/` directory:
-  - `index.html` - Full-featured documentation page with sticky navigation, theme toggle (light/dark), and responsive design
-  - `light-theme.css` and `dark-theme.css` - Professional styling with GitHub-inspired color schemes
-  - `favicon.ico` and `header_banner.png` - Visual branding elements
-  - Organized content sections: Overview, Prerequisites, Configuration, Getting Started, Architecture, Security, Troubleshooting, Support
-  - Mobile-responsive navigation with smooth scrolling and active section highlighting
-  - Theme persistence using localStorage
-- **Comprehensive README.md** - Added 558-line detailed documentation covering:
-  - Complete project overview and prerequisites
-  - GitHub repository configuration guide (secrets and variables)
-  - Terraform variable documentation
-  - Step-by-step provisioning and destroying workflows
-  - AWS IAM OIDC setup instructions
-  - Troubleshooting guide
-  - State file management procedures
-- **Automation Scripts**:
-  - `set-state.sh` - Automated script to provision infrastructure, assume IAM role, and upload state file to S3
-  - `get-state.sh` - Automated script to download state file from S3 with role assumption
-  - Both scripts include colored output, error handling, and integrate with GitHub CLI
-- **outputs.tf** - Added output for bucket name to support automation
-- **WARP.md** - Created comprehensive development guide for Warp AI agent:
-  - Common commands and automated workflows
-  - Architecture documentation with dynamic configuration details
-  - Security considerations and best practices
-  - CI/CD workflow documentation
-  - Key differences from traditional Terraform backend setups
-- **CHANGELOG.md** - This file, documenting all changes since inception
+
+- Enhanced `set-state.sh` script with comprehensive automation:
+  - Automatic role assumption from AWS Secrets Manager
+  - Intelligent infrastructure provisioning detection
+  - Automatic state file download from S3 when bucket exists
+  - Terraform validation, plan, and apply workflow integration
+  - Bucket name verification and GitHub repository variable management
+  - Comprehensive error handling with colored output
+  - Always updates bucket name and state file to ensure synchronization
+- **GitHub Actions Workflows**:
+  - Created `.github/workflows/tfstate_infra_provisioning.yaml` - Automated provisioning
+  workflow with OIDC authentication
+  - Created `.github/workflows/tfstate_infra_destroying.yaml` - Automated destroying
+  workflow with OIDC authentication
+  - Both workflows support state file management, bucket name variable updates,
+  and OIDC-based AWS authentication
 
 ### Changed
-- **Secret Retrieval Refactor**:
-  - **Local Scripts**: Updated `get-state.sh` and `set-state.sh` to retrieve secrets from AWS Secrets Manager instead of environment variables
-  - **Split Secret Functions**: Replaced `get_repo_secret_value()` with two separate functions:
-    - `get_aws_secret(secret_name)` - Retrieves secret JSON from AWS Secrets Manager
-    - `get_secret_key_value(secret_json, key_name)` - Extracts key value from secret JSON with validation
-  - **AWS Secrets Manager Integration**: Scripts now retrieve role ARN from AWS Secrets Manager secret named 'github-role' with key 'AWS_STATE_ACCOUNT_ROLE_ARN'
-  - **Enhanced Validation**: Added comprehensive error handling for secret existence, JSON parsing, and key validation
-  - **GitHub Actions**: Workflows continue to use GitHub repository secrets directly (no change to workflow behavior)
-- **Complete Infrastructure Refactor**:
-  - **Removed DynamoDB state locking** - Replaced with file-based locking in S3 for simplicity and cost reduction
-  - **Dynamic Principal ARN Detection** - Added `data.aws_caller_identity` to automatically detect and use current caller's ARN
-  - **Dynamic Bucket Naming** - Bucket name now includes AWS account ID for global uniqueness: `{prefix}-{account-id}-s3-tfstate`
-  - **Bucket Policy Modernization** - Switched from heredoc to `jsonencode()` for better syntax and validation
-  - **Added Public Access Block** - Explicit S3 public access blocking for enhanced security
-- **main.tf** - Complete rewrite:
-  - Added `data.aws_caller_identity.current` data source
-  - Added `locals` block for dynamic principal ARN with fallback to current caller
-  - Updated S3 bucket resource to include account ID in name
-  - Removed `lifecycle.prevent_destroy` block
-  - Added `aws_s3_bucket_public_access_block` resource
-  - Updated bucket policy to use `jsonencode()` instead of heredoc
-  - Updated bucket policy to reference `local.principal_arn` instead of `var.principal_arn`
-  - Added dependency on public access block in bucket policy
-  - **Removed all DynamoDB resources**: `aws_dynamodb_table.terraform_lock` and `aws_dynamodb_resource_policy.terraform_lock_policy`
-  - Removed 98 lines of commented-out legacy code
-- **variables.tf** - Simplified configuration:
-  - Removed `resource_alias` variable (no longer needed)
-  - Made `principal_arn` optional with `default = null`
-  - Updated `principal_arn` description to explain automatic detection behavior
-- **Configuration Files**:
-  - Removed `dev.tfvars` - Replaced with single unified config file
-  - Removed `prod.tfvars` - Replaced with single unified config file
-  - Added `variables.tfvars` - Single configuration file with optional `principal_arn`
-- **providers.tf** - Updated provider versions:
-  - AWS provider: `5.59.0` → `6.21.0` (pinned)
-  - Terraform version constraint: `>= 1.2.0` → `= 1.14.0` (exact version pinned)
-- **GitHub Actions Workflows** - Complete OIDC migration:
-  - Renamed `infra_provisioning.yaml` → `tfstate_infra_provisioning.yaml`
-  - Renamed `infra_destroying.yaml` → `tfstate_infra_destroying.yaml`
-  - Migrated from AWS access keys to OIDC authentication (`aws-actions/configure-aws-credentials@v4`)
-  - Updated Terraform version from 1.9.2 to 1.14.0
-  - Updated checkout action from `v2` to `v4`
-  - Added permissions block: `contents: write`, `actions: write`, `id-token: write`
-  - Added dynamic principal ARN detection step
-  - Added state file existence check before provisioning
-  - Added state file download from S3 if it exists
-  - Added state file upload to S3 after provisioning
-  - Added GitHub repository variable management for `BACKEND_BUCKET_NAME`
-  - Switched from hardcoded environment variables to GitHub secrets/variables
-  - Added `github-script` actions for variable management with proper error handling
+
+- Simplified Terraform configuration:
+  - Removed `principal_arn` variable - bucket policy now always uses current
+    caller's ARN automatically via `data.aws_caller_identity.current.arn`
+  - Eliminates need to pass principal ARN as a variable, simplifying
+    configuration
+- Updated `set-state.sh` script:
+  - Removed principal ARN retrieval and passing to Terraform plan command
+  - Script now relies on automatic principal detection via `data.aws_caller_identity.current.arn`
+  - Removed conditional check for `PROVISIONED_INFRA` - script now always
+    updates bucket name and state file
+  - Ensures bucket name repository variable and state file are always
+    synchronized with latest values
+  - Checks for existing `BACKEND_BUCKET_NAME` repository variable to determine
+    if infrastructure needs provisioning
+  - Automatically downloads existing state file from S3 when bucket is found
+  - Validates bucket name consistency between repository variable and Terraform
+    output
+  - Enhanced credential extraction with jq fallback to sed for broader
+    compatibility
+  - Improved user feedback with colored status messages (INFO, SUCCESS, ERROR)
 
 ### Removed
-- **DynamoDB Resources**:
-  - `aws_dynamodb_table.terraform_lock` - No longer using DynamoDB for state locking
-  - `aws_dynamodb_resource_policy.terraform_lock_policy` - Associated policy removed
-- **Configuration Files**:
-  - `dev.tfvars` - Consolidated into single `variables.tfvars`
-  - `prod.tfvars` - Consolidated into single `variables.tfvars`
-- **Variables**:
-  - `resource_alias` variable - No longer needed
-- **Old Workflows**:
-  - `.github/workflows/infra_cleanup.yaml` - Removed in favor of destroying workflow
-  - `.github/workflows/infra_deployment.yaml` - Removed in favor of provisioning workflow
-- **Hardcoded Values**:
-  - Removed hardcoded IAM user ARN from DynamoDB policy
-  - Removed hardcoded principal ARN requirement via dynamic detection
-- **Legacy Code**:
-  - Removed 98 lines of commented-out alternative bucket policy implementation
+
+- Removed `principal_arn` variable from `variables.tf` - no longer needed as
+  bucket policy automatically uses current caller's ARN
+- Removed `locals` block from `main.tf` that handled `principal_arn` fallback logic
+- Removed all references to `principal_arn` from documentation:
+  - Removed from README.md (Optional Variables section and troubleshooting)
+  - Removed from `docs/index.html` (Terraform Variables table and troubleshooting
+  section)
 
 ### Security
-- **OIDC Authentication** - GitHub Actions now use OIDC to assume IAM roles instead of storing AWS access keys
-- **Public Access Block** - Added explicit S3 public access blocking (`aws_s3_bucket_public_access_block`)
-- **Dynamic Principal Detection** - Principal ARN now automatically detected, eliminating hardcoded credentials
-- **Role-Based Access** - Scripts use temporary credentials via role assumption
-- **Improved Policy Dependencies** - Bucket policy now explicitly depends on public access block being in place
 
-### Fixed
-- **Bucket Naming Conflicts** - Account ID in bucket name prevents naming collisions across AWS accounts
-- **ACL Compatibility** - Proper resource ordering ensures `aws_s3_bucket_ownership_controls` exists before ACL
-- **State Locking Costs** - Eliminated DynamoDB costs by switching to file-based locking
+- Enhanced credential handling in `set-state.sh`:
+  - Secure role assumption with timestamped session names
+  - Credential verification before proceeding with operations
+  - Proper error handling for failed role assumptions
+- Simplified security model:
+  - Bucket policy now always uses current caller's ARN automatically
+  - Eliminates potential misconfiguration from manual ARN specification
+  - Ensures bucket access is always aligned with the executing identity
 
-## [1.2.0] - 2024-08-27
+### Documentation
 
-### Changed
-- **providers.tf** - Updated AWS provider version from `5.59.0` to exact pinned version
-- **Added Terraform lock file** - `.terraform.lock.hcl` added with provider version constraints
+- Updated README.md:
+  - Removed reference to non-existent `SECRETS_REQUIREMENTS.md` file
+  - Added inline information about AWS Secrets Manager secret structure
+  - Removed "Optional Variables" section about `principal_arn`
+  - Updated troubleshooting section to reflect automatic principal detection
+- Updated `docs/index.html`:
+  - Removed `principal_arn` from Terraform Variables table
+  - Updated Step 3 section to clarify bucket policy uses `data.aws_caller_identity.current.arn`
+  directly
+  - Updated troubleshooting section to remove `principal_arn` references
 
-## [1.1.0] - 2024-08-15
-
-### Changed
-- **Workflow Restructuring**:
-  - Renamed `.github/workflows/infra_cleanup.yaml` → `.github/workflows/infra_destroying.yaml`
-  - Renamed `.github/workflows/infra_deployment.yaml` → `.github/workflows/infra_provisioning.yaml`
-  - Updated workflow jobs and steps to match new naming convention
-- **main.tf** - Enhanced resource configuration:
-  - Added comprehensive S3 bucket configuration with ownership controls
-  - Added bucket versioning for state file history
-  - Added server-side encryption (AES256) for state files
-  - Added DynamoDB table for state locking with PAY_PER_REQUEST billing
-  - Added DynamoDB resource policy for access control
-  - Implemented proper resource dependencies
-- **providers.tf** - Updated AWS provider source and version configuration
-
-### Removed
-- **Workflow Files**:
-  - Deleted `.github/workflows/infra_cleanup.yaml` (renamed to destroying)
-  - Deleted `.github/workflows/infra_deployment.yaml` (renamed to provisioning)
-
-## [1.0.0] - 2024-06-10
+## [1.0.0] - 2025
 
 ### Added
-- **Initial Release** - First version of Terraform backend state infrastructure
-- **Core Terraform Configuration**:
-  - `main.tf` - S3 bucket and DynamoDB table for Terraform state management
-  - `variables.tf` - Variable definitions for `env`, `region`, `prefix`, `resource_alias`, `principal_arn`
-  - `providers.tf` - AWS provider configuration with version `~> 5.0`
-- **Environment Configurations**:
-  - `dev.tfvars` - Development environment configuration
-  - `prod.tfvars` - Production environment configuration
-- **GitHub Actions Workflows**:
-  - `.github/workflows/infra_deployment.yaml` - Automated deployment workflow
-  - `.github/workflows/infra_cleanup.yaml` - Automated cleanup workflow
-  - Both workflows use AWS access keys (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-- **Git Configuration**:
-  - `.gitignore` - Standard Terraform ignore patterns for state files, lock files, and credentials
-- **LICENSE** - MIT License
 
-### Infrastructure Features
-- S3 bucket for Terraform state storage
-- DynamoDB table for state locking
-- Support for multiple environments (dev/prod)
-- GitHub Actions CI/CD integration
-- IAM-based access control via bucket and DynamoDB policies
+- Initial Terraform configuration for S3 backend state bucket
+- S3 bucket with versioning enabled for state file storage
+- Server-side encryption (AES256) for state files at rest
+- S3 bucket policy with IAM-based access control
+- Public access block configuration to prevent unauthorized access
+- Bucket ownership controls to support ACL configuration
+- Dynamic bucket naming using prefix and AWS account ID for global
+  uniqueness
+- Support for optional `principal_arn` variable with automatic detection
+  of current caller's ARN (removed in [Unreleased])
+- Terraform output for bucket name
+- Comprehensive README documentation with setup instructions
+- Local automation scripts (`get-state.sh` and `set-state.sh`) for
+  state file management
+- AWS Secrets Manager integration for role ARN retrieval in local
+  scripts
+- GitHub repository variable management for bucket name and
+  configuration
+- Support for GitHub OIDC authentication via IAM roles
+- Automatic state file upload/download functionality
+- Environment and prefix-based resource tagging
+- **GitHub Pages Documentation Site**:
+  - Created comprehensive documentation site in `docs/` directory
+  - `index.html` - Full-featured documentation page with sticky navigation, theme
+  toggle (light/dark), and responsive design
+  - `light-theme.css` and `dark-theme.css` - Professional styling with GitHub-inspired
+  color schemes
+  - `favicon.ico` and `header_banner.png` - Visual branding elements
+  - Organized content sections: Overview, Prerequisites, Configuration, Getting
+  Started, Architecture, Security, Troubleshooting, Support
+  - Mobile-responsive navigation with smooth scrolling and active section highlighting
+  - Theme persistence using localStorage
 
----
+### Changed
 
-## Migration Guide: v1.2.0 → Unreleased
+- Updated AWS provider to version 6.21.0
+- Updated Terraform required version to 1.14.0
+- Improved automation scripts to use AWS Secrets Manager for secret access
+- **Secret Retrieval Implementation**:
+  - Implemented `get_aws_secret(secret_name)` function - Retrieves secret JSON
+  from AWS Secrets Manager
+  - Implemented `get_secret_key_value(secret_json, key_name)` function - Extracts
+  key value from secret JSON with validation
+  - Enhanced validation: Added comprehensive error handling for secret existence,
+  JSON parsing, and key validation
+- Enhanced documentation with detailed troubleshooting sections
+- Improved error handling and user feedback in automation scripts
 
-If you're upgrading from version 1.2.0 to the unreleased version, follow these steps:
+### Fixed
 
-### Prerequisites
-1. Install GitHub CLI (`gh`) and authenticate: `gh auth login`
-2. Install `jq` for JSON parsing: `brew install jq` (macOS) or equivalent
-3. Ensure you have Terraform 1.14.0 installed
+- Fixed bucket prefix handling to prevent leading slash issues in
+  backend configuration
+- Corrected Markdown lint errors for row length across documentation
+- Fixed state file management to prevent committing sensitive state to
+  repository
 
-### GitHub Configuration
-1. **Set up AWS OIDC Identity Provider** in your AWS account (see README.md)
-2. **Create IAM Role** that trusts GitHub OIDC provider
-3. **Configure GitHub Secrets**:
-   - Remove: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-   - Add: `AWS_STATE_ACCOUNT_ROLE_ARN` (IAM role ARN)
-   - Add: `GH_TOKEN` (Personal Access Token with `repo` scope)
-4. **Configure GitHub Variables**:
-   - Add: `AWS_REGION` (e.g., "us-east-1")
-   - Add: `BACKEND_PREFIX` (e.g., "backend_state/terraform.tfstate")
+### Removed
 
-### Migration Steps
-1. **Backup your current state**:
-   ```bash
-   cp terraform.tfstate terraform.tfstate.backup
-   ```
+- (No removals in this version)
 
-2. **Export environment variable** (if using scripts locally):
-   ```bash
-   export AWS_STATE_ACCOUNT_ROLE_ARN="arn:aws:iam::ACCOUNT_ID:role/ROLE_NAME"
-   ```
+### Security
 
-3. **Update Terraform configuration**:
-   - Run `terraform init -upgrade` to update provider versions
-   - Review and update `variables.tfvars` (remove `resource_alias`, `principal_arn` is now optional)
+- Implemented private bucket ACL configuration
+- Added comprehensive public access blocking
+- Enabled encryption at rest for all state files
+- Implemented IAM-based access control with principal ARN support
+- Added support for OIDC-based authentication (no access keys
+  required)
 
-4. **Note**: The DynamoDB table will be removed. Ensure no other projects depend on it.
+## [0.1.0] - Initial Development
 
-5. **Apply changes**:
-   - Use `./set-state.sh` for automated provisioning
-   - Or manually run terraform with the new configuration
+### Added
 
-6. **Verify**:
-   - Check that bucket name includes account ID
-   - Verify OIDC authentication works in GitHub Actions
-   - Confirm state file uploaded to S3
+- Basic S3 bucket configuration
+- S3 file-based state locking
+- Basic documentation
 
-### Breaking Changes
-- **DynamoDB table removed** - If other projects reference this table, update them first
-- **Variable structure changed** - `dev.tfvars` and `prod.tfvars` replaced with `variables.tfvars`
-- **Bucket naming changed** - Bucket name now includes account ID (will create new bucket)
-- **Authentication changed** - Must migrate from access keys to OIDC
+## Notes
 
-[Unreleased]: https://github.com/USERNAME/REPO/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/USERNAME/REPO/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/USERNAME/REPO/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/USERNAME/REPO/releases/tag/v1.0.0
+- **State Locking**: Uses S3 file-based locking (`use_lockfile = true`)
+- **Bucket Naming**: Format is `{prefix}-{account-id}-s3-tfstate` to
+  ensure global uniqueness
+- **Access Control**: Always uses the current caller's ARN automatically via
+  `data.aws_caller_identity.current.arn` - no manual configuration needed
+- **Automation**: Supports both GitHub Actions workflows and local
+  script execution
+- **Security**: All state files are encrypted, private, and
+  access-controlled via IAM policies

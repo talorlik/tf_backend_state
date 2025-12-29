@@ -188,12 +188,6 @@
                     <td>Prefix added to all resource names for identification</td>
                     <td><code>"mycompany-tf"</code>, <code>"project-name"</code></td>
                 </tr>
-                <tr>
-                    <td><code>principal_arn</code></td>
-                    <td>string (optional)</td>
-                    <td>IAM principal ARN. If not provided, defaults to current caller's ARN (automatically detected)</td>
-                    <td><code>"arn:aws:iam::123456789012:user/myuser"</code></td>
-                </tr>
             </tbody>
         </table>
     </section>
@@ -236,11 +230,11 @@
             </ol>
 
             <h4>Step 3: S3 Bucket Policy (Automatic)</h4>
-            <p>The bucket policy in <code>main.tf</code> automatically uses the current caller's ARN by default. <strong>No configuration needed!</strong></p>
+            <p>The bucket policy in <code>main.tf</code> automatically uses the current caller's ARN via <code>data.aws_caller_identity.current.arn</code>. <strong>No configuration needed!</strong></p>
             <ul>
                 <li>When running via GitHub Actions: The workflow automatically detects the assumed role's ARN and uses it</li>
                 <li>When running locally: The scripts automatically assume the IAM role and Terraform detects the assumed role's ARN</li>
-                <li>The <code>principal_arn</code> variable is optional - only set it if you need to grant access to a different principal</li>
+                <li>The bucket policy always grants access to the current caller, eliminating the need for manual ARN configuration</li>
             </ul>
         </div>
 
@@ -525,14 +519,15 @@ terraform apply -auto-approve terraform.tfplan</code></pre>
                 <li><strong>Cause</strong>: The IAM principal doesn't have S3 permissions, or there's a mismatch between the caller and the bucket policy</li>
                 <li><strong>Solution</strong>:
                     <ul>
-                        <li>By default, <code>principal_arn</code> automatically uses the current caller's ARN. Verify this matches your expectations:
+                        <li>The bucket policy automatically uses the current caller's ARN via <code>data.aws_caller_identity.current.arn</code>. Verify this matches your expectations:
                             <ul>
                                 <li>Run <code>aws sts get-caller-identity</code> to see your current ARN</li>
                                 <li>Ensure the caller has S3 permissions for the state bucket</li>
                             </ul>
                         </li>
-                        <li>If you've overridden <code>principal_arn</code>, verify it matches the IAM role ARN used in <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> secret (for GitHub Actions)</li>
+                        <li>For GitHub Actions: Verify the IAM role ARN used in <code>AWS_STATE_ACCOUNT_ROLE_ARN</code> secret matches the assumed role</li>
                         <li>Check that the OIDC trust relationship is correctly configured (for GitHub Actions)</li>
+                        <li>For local scripts: Ensure the role ARN in AWS Secrets Manager matches the role ARN in GitHub secrets</li>
                     </ul>
                 </li>
             </ul>
@@ -600,12 +595,8 @@ aws secretsmanager get-secret-value --secret-id github-role --query SecretString
                 <p>Complete project documentation with setup instructions and usage guide</p>
             </div>
             <div class="doc-item">
-                <a href="../CHANGELOG.md">Changelog</a>
+                <a href="../CHANGELOG.md">CHANGELOG</a>
                 <p>All notable changes to the project, organized by version</p>
-            </div>
-            <div class="doc-item">
-                <a href="../LICENSE">License</a>
-                <p>MIT License - Full license text</p>
             </div>
         </div>
 

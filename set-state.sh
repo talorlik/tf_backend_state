@@ -252,7 +252,6 @@ print_success "Retrieved BACKEND_PREFIX: $BACKEND_PREFIX"
 # Check if BACKEND_BUCKET_NAME exists in repository variables
 print_info "Checking for existing BACKEND_BUCKET_NAME in repository variables..."
 BUCKET_NAME=$(get_repo_variable "BACKEND_BUCKET_NAME" || echo "")
-PROVISIONED_INFRA=false
 
 if [ -z "$BUCKET_NAME" ]; then
     print_info "BACKEND_BUCKET_NAME not found in repository variables."
@@ -283,18 +282,9 @@ if [ -z "$BUCKET_NAME" ]; then
     fi
     print_success "Terraform validation passed"
 
-    # Get current AWS principal ARN
-    print_info "Getting current AWS principal ARN..."
-    PRINCIPAL_ARN=$(aws sts get-caller-identity --region "$REGION" --query 'Arn' --output text 2>&1)
-    if [ $? -ne 0 ]; then
-        print_error "Failed to get principal ARN: $PRINCIPAL_ARN"
-        exit 1
-    fi
-    print_success "Using principal ARN: $PRINCIPAL_ARN"
-
     # Terraform plan
     print_info "Running terraform plan..."
-    if ! terraform plan -var-file="variables.tfvars" -var="principal_arn=${PRINCIPAL_ARN}" -out terraform.tfplan; then
+    if ! terraform plan -var-file="variables.tfvars" -out terraform.tfplan; then
         print_error "Terraform plan failed."
         exit 1
     fi
@@ -317,9 +307,6 @@ if [ -z "$BUCKET_NAME" ]; then
         exit 1
     fi
     print_success "Retrieved bucket name: $BUCKET_NAME"
-
-    # Mark infrastructure as successfully provisioned
-    PROVISIONED_INFRA=true
 else
     print_success "Found existing BACKEND_BUCKET_NAME: $BUCKET_NAME"
 
@@ -359,30 +346,25 @@ else
     print_success "Bucket name verified"
 fi
 
-# Save bucket name to GitHub repository variable (only if we just provisioned)
-# Upload terraform.tfstate to S3 (only if infrastructure was just provisioned)
-if [ "$PROVISIONED_INFRA" = true ]; then
-    print_info "Saving bucket name to GitHub repository variable..."
-    if set_repo_variable "BACKEND_BUCKET_NAME" "$BUCKET_NAME"; then
-        print_success "Saved BACKEND_BUCKET_NAME to repository variables"
-    else
-        print_error "Failed to save BACKEND_BUCKET_NAME to repository variables."
-        echo "Please ensure you have proper permissions to write repository variables."
-        exit 1
-    fi
-
-    S3_PATH="s3://${BUCKET_NAME}/${BACKEND_PREFIX}"
-    print_info "Uploading state file to: $S3_PATH"
-
-    if aws s3 cp terraform.tfstate "$S3_PATH" --region "$REGION"; then
-        print_success "State file uploaded successfully to $S3_PATH"
-    else
-        print_error "Failed to upload state file to S3"
-        exit 1
-    fi
+# Always save bucket name to GitHub repository variable
+print_info "Saving bucket name to GitHub repository variable..."
+if set_repo_variable "BACKEND_BUCKET_NAME" "$BUCKET_NAME"; then
+    print_success "Saved BACKEND_BUCKET_NAME to repository variables"
 else
-    print_info "BACKEND_BUCKET_NAME already exists in repository variables, skipping save"
-    print_info "Infrastructure already exists, state file is already in S3, skipping upload"
+    print_error "Failed to save BACKEND_BUCKET_NAME to repository variables."
+    echo "Please ensure you have proper permissions to write repository variables."
+    exit 1
+fi
+
+# Always upload terraform.tfstate to S3 (ensures state file is synchronized with latest changes)
+S3_PATH="s3://${BUCKET_NAME}/${BACKEND_PREFIX}"
+print_info "Uploading state file to: $S3_PATH"
+
+if aws s3 cp terraform.tfstate "$S3_PATH" --region "$REGION"; then
+    print_success "State file uploaded successfully to $S3_PATH"
+else
+    print_error "Failed to upload state file to S3"
+    exit 1
 fi
 
 print_success "Script completed successfully"

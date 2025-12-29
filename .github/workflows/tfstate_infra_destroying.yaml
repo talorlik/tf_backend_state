@@ -43,16 +43,8 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - name: Get current AWS principal ARN
-        id: get_principal_arn
-        run: |
-          PRINCIPAL_ARN=$(aws sts get-caller-identity --query Arn --output text)
-          echo "principal_arn=$PRINCIPAL_ARN" >> $GITHUB_OUTPUT
-          echo "Using principal ARN: $PRINCIPAL_ARN"
-
       - name: Terraform plan destroy
-        run: |
-          terraform plan -var-file="variables.tfvars" -var="principal_arn=${{ steps.get_principal_arn.outputs.principal_arn }}" -destroy -out terraform.tfplan
+        run: terraform plan -var-file="variables.tfvars" -destroy -out terraform.tfplan
 
       - name: Destroy backend state
         run: terraform apply -auto-approve terraform.tfplan

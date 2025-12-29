@@ -99,16 +99,8 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - name: Get current AWS principal ARN
-        id: get_principal_arn
-        run: |
-          PRINCIPAL_ARN=$(aws sts get-caller-identity --query Arn --output text)
-          echo "principal_arn=$PRINCIPAL_ARN" >> $GITHUB_OUTPUT
-          echo "Using principal ARN: $PRINCIPAL_ARN"
-
       - name: Terraform plan
-        run: |
-          terraform plan -var-file="variables.tfvars" -var="principal_arn=${{ steps.get_principal_arn.outputs.principal_arn }}" -out terraform.tfplan
+        run: terraform plan -var-file="variables.tfvars" -out terraform.tfplan
 
       - name: Provision backend state
         id: provision_backend
@@ -172,8 +164,7 @@ jobs:
             }
 
       - name: Upload backend state file to S3
-        # Output is always set by provision_backend step (see line 118)
-        if: steps.provision_backend.outputs.bucket_name != ''
+        # Always upload state file to ensure synchronization
         env:
           BUCKET_NAME: ${{ steps.provision_backend.outputs.bucket_name }}
           BACKEND_PREFIX: ${{ vars.BACKEND_PREFIX }}
@@ -182,4 +173,6 @@ jobs:
             echo "Error: BUCKET_NAME or BACKEND_PREFIX is empty"
             exit 1
           fi
+          echo "Uploading state file to s3://${BUCKET_NAME}/${BACKEND_PREFIX}"
           aws s3 cp terraform.tfstate s3://${BUCKET_NAME}/${BACKEND_PREFIX}
+          echo "State file uploaded successfully"
